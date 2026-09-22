@@ -1,0 +1,357 @@
+/** Riddle Demo Server（多项目版）：UI 静态服务 + 项目清单 + agent 事件流（SSE）+ 状态 API。
+ * 无框架 node:http；启动：npm run serve（默认 :8787）。
+ *
+ * 项目 = 一份独立 runtime（trip store / 对话 / 事件缓冲 / busy 锁）。
+ * 注册表持久化在 runs/projects.json；trip 图状态由 TripStore 自持久化在 runs/<trip_id>/。
+ *
+ * 路由：
+ *   GET  /                     → UI/app.html
+ *   GET  /api/projects         → 项目清单（含置顶/归档/排序）
+ *   POST /api/projects         → 新建项目 → { meta }
+ *   POST /api/projects/:id/meta     { pinned?, archived? } → 更新元数据
+ *   POST /api/projects/reorder      { ids: [...] } → 按数组顺序写入 order
+ *   GET  /api/state?project=   → { trip, pending, ops, conv }
+ *   POST /api/input?project=   → { text } → 跑一轮 agent.prompt
+ *   POST /api/reset?project=   → 该项目的 trip 推倒重来
+ *   GET  /api/events?project=  → SSE：jev/pending/geo/gate/tool/turn_* 事件流（按项目隔离）
+ *   GET  /api/map-config       → 高德 JSAPI key + securityJsCode
+ *   （project 参数缺省 → 最近更新的未归档项目；一个都没有则新建）
+ */
+import { config } from "dotenv";
+import { join } from "node:path";
+config({ path: join(import.meta.dirname, "../../.env") });
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { createRiddleAgent, buildModel, type RiddleRuntime } from "./agent.ts";
+import { TripStore, emptyTrip } from "./memory/trip-store.ts";
+import { LLM_PRESETS, loadSettings, saveSettings, publicSettings, resolveMapConfig, resolveMapProvider, resolveWatchdogMs, type LlmProvider } from "./settings.ts";
+import { testConnection } from "./settings-test.ts";
+
+const UI_DIR = join(import.meta.dirname, "../../UI");
+const RUNS_DIR = join(import.meta.dirname, "../runs");  // 与 TripStore 默认 runsRoot 一致（APP/runs）
+mkdirSync(RUNS_DIR, { recursive: true });
+const REGISTRY_PATH = join(RUNS_DIR, "projects.json");
+const LAB_ENV = join(import.meta.dirname, "../../LAB/lab01-amap-route-magnifier/env.js");
+const PORT = Number(process.env.RIDDLE_PORT || 8787);
+
+/** JSAPI 凭证兜底链：环境变量（AMAP_JSAPI_KEY / AMAP_SECURITY_JSCODE）→ 内部 lab01 env.js（外部分发包无此文件，自动跳过） */
+function mapConfigFallback() {
+  const envKey = process.env.AMAP_JSAPI_KEY ?? "";
+  const envCode = process.env.AMAP_SECURITY_JSCODE ?? "";
+  if (envKey || envCode) return { key: envKey, securityJsCode: envCode };
+  try {
+    const src = readFileSync(LAB_ENV, "utf8");
+    return {
+      key: /key:\s*'([^']+)'/.exec(src)?.[1] ?? "",
+      securityJsCode: /securityJsCode:\s*'([^']+)'/.exec(src)?.[1] ?? "",
+    };
+  } catch {
+    return { key: "", securityJsCode: "" };
+  }
+}
+
+// ---------------- 项目注册表 ----------------
+interface ProjectMeta {
+  id: string;            // = tripId
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  pinned: boolean;
+  archived: boolean;
+  order: number;
+  stage: string;         // 清单卡片展示用，touch 时同步
+}
+interface Project {
+  meta: ProjectMeta;
+  rt?: RiddleRuntime;
+  conv: { role: "user" | "agent"; text: string; ts: number }[];
+  eventLog: Record<string, unknown>[];
+  busy: boolean;
+  sse: Set<ServerResponse>;
+}
+
+const projects = new Map<string, Project>();
+const REPLAY_SKIP = new Set(["turn_start", "turn_end", "turn_error", "geo", "hello", "reset"]);
+
+function saveRegistry() {
+  const metas = [...projects.values()].map(p => p.meta);
+  writeFileSync(REGISTRY_PATH, JSON.stringify(metas, null, 2));
+}
+
+function broadcast(p: Project, ev: Record<string, unknown>) {
+  const stamped = { ...ev, ts: Date.now() };
+  if (!REPLAY_SKIP.has(ev.type as string)) { p.eventLog.push(stamped); if (p.eventLog.length > 300) p.eventLog.shift(); }
+  const line = `data: ${JSON.stringify(stamped)}\n\n`;
+  for (const res of p.sse) { try { res.write(line); } catch { /* 客户端断开由 close 清理 */ } }
+}
+
+/** 项目显示名：目的地·天数 > 首句用户输入 > 新旅程 */
+function deriveTitle(p: Project): string {
+  if (p.rt) {
+    const t = p.rt.store.trip;
+    const dest = (t.destination.length ? t.destination : (t.slots.destination as string[])) ?? [];
+    if (dest.length) return `${dest.join("·")}${t.days ? ` · ${t.days}日` : ""}`;
+  }
+  const first = p.conv.find(m => m.role === "user")?.text;
+  if (first) return first.slice(0, 14) + (first.length > 14 ? "…" : "");
+  return "新旅程";
+}
+
+function touch(p: Project) {
+  p.meta.updatedAt = Date.now();
+  p.meta.title = deriveTitle(p);
+  if (p.rt) p.meta.stage = p.rt.store.trip.stage;
+  saveRegistry();
+}
+
+function persistConv(p: Project) {
+  try { writeFileSync(join(RUNS_DIR, p.meta.id, "conv.json"), JSON.stringify(p.conv)); } catch { /* 目录未建时跳过 */ }
+}
+
+/** 懒加载 runtime：registry 里有 tripId 且磁盘有 trip.json → 恢复；否则新开 */
+function getRt(p: Project): RiddleRuntime {
+  if (p.rt) return p.rt;
+  let store: TripStore;
+  try {
+    const trip = JSON.parse(readFileSync(join(RUNS_DIR, p.meta.id, "trip.json"), "utf8"));
+    store = new TripStore(trip);
+    try { p.conv.push(...JSON.parse(readFileSync(join(RUNS_DIR, p.meta.id, "conv.json"), "utf8"))); } catch { /* 无对话记录 */ }
+  } catch {
+    // trip.json 缺失（如新建项目从未落盘）：按 registry 的 id 重建空 trip，项目身份保持稳定
+    const t = emptyTrip();
+    t.trip_id = p.meta.id;
+    store = new TripStore(t);
+    store.save();
+  }
+  const rt = createRiddleAgent(store);
+  rt.onEvent(ev => broadcast(p, ev as unknown as Record<string, unknown>));
+  rt.agent.subscribe((ev: any) => {
+    if (ev.type === "tool_execution_start") broadcast(p, { type: "tool", phase: "start", name: ev.toolName ?? ev.toolCall?.name });
+    if (ev.type === "tool_execution_end") {
+      const t = ev.result?.content?.[0]?.text ?? "";
+      broadcast(p, { type: "tool", phase: "end", name: ev.toolName ?? ev.toolCall?.name, text: String(t).slice(0, 300) });
+    }
+  });
+  p.rt = rt;
+  return rt;
+}
+
+function createProject(): Project {
+  const p: Project = {
+    meta: { id: "", title: "新旅程", createdAt: Date.now(), updatedAt: Date.now(), pinned: false, archived: false, order: projects.size, stage: "explore" },
+    conv: [], eventLog: [], busy: false, sse: new Set(),
+  };
+  // 全新项目：先建 store 拿到随机 tripId 并立即落盘，再交给 getRt 装配（否则 catch 分支会把 id 钉成 ""）
+  const store = new TripStore();
+  store.save();
+  p.meta.id = store.trip.trip_id;
+  projects.set(p.meta.id, p);
+  getRt(p);
+  saveRegistry();
+  return p;
+}
+
+function loadRegistry() {
+  if (!existsSync(REGISTRY_PATH)) return;
+  try {
+    for (const meta of JSON.parse(readFileSync(REGISTRY_PATH, "utf8")) as ProjectMeta[]) {
+      meta.stage ??= "explore";
+      projects.set(meta.id, { meta, conv: [], eventLog: [], busy: false, sse: new Set() });
+    }
+  } catch { /* 注册表损坏则从空开始 */ }
+}
+
+/** project 参数缺省时的兜底：最近更新的未归档项目，没有则新建 */
+function defaultProject(): Project {
+  const live = [...projects.values()].filter(p => !p.meta.archived)
+    .sort((a, b) => b.meta.updatedAt - a.meta.updatedAt);
+  return live[0] ?? createProject();
+}
+
+function resolveProject(url: URL): Project | undefined {
+  const id = url.searchParams.get("project");
+  if (id) return projects.get(id);
+  return defaultProject();
+}
+
+function statePayload(p: Project) {
+  const rt = getRt(p);
+  return {
+    project: p.meta,
+    trip: rt.store.trip,
+    pending: rt.scheduler.list(),
+    ops: rt.store.ops.map((r: any) => ({ seq: r.seq, ts: r.ts, op: r.op, undo_kind: r.undo?.kind ?? null, payload: r.payload })),
+    conv: p.conv,
+  };
+}
+
+function sendJson(res: ServerResponse, code: number, data: unknown) {
+  res.writeHead(code, { "content-type": "application/json; charset=utf-8" });
+  res.end(JSON.stringify(data));
+}
+
+async function readBody(req: IncomingMessage): Promise<any> {
+  const chunks: Buffer[] = [];
+  for await (const c of req) chunks.push(c as Buffer);
+  try { return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}"); } catch { return {}; }
+}
+
+loadRegistry();
+if (!projects.size) createProject();
+
+const server = createServer(async (req, res) => {
+  const url = new URL(req.url ?? "/", "http://localhost");
+  const path = url.pathname;
+
+  // ---------- 项目清单 ----------
+  if (path === "/api/projects" && req.method === "GET") {
+    for (const p of projects.values()) if (p.rt) p.meta.title = deriveTitle(p);
+    const metas = [...projects.values()].map(p => p.meta)
+      .sort((a, b) => Number(b.pinned) - Number(a.pinned) || a.order - b.order || b.updatedAt - a.updatedAt);
+    return sendJson(res, 200, { projects: metas });
+  }
+  if (path === "/api/projects" && req.method === "POST") {
+    const p = createProject();
+    return sendJson(res, 200, { meta: p.meta });
+  }
+  const metaMatch = /^\/api\/projects\/([^/]+)\/meta$/.exec(path);
+  if (metaMatch && req.method === "POST") {
+    const p = projects.get(metaMatch[1]);
+    if (!p) return sendJson(res, 404, { error: "project not found" });
+    const body = await readBody(req);
+    if (typeof body.pinned === "boolean") p.meta.pinned = body.pinned;
+    if (typeof body.archived === "boolean") p.meta.archived = body.archived;
+    touch(p);
+    return sendJson(res, 200, { meta: p.meta });
+  }
+  if (path === "/api/projects/reorder" && req.method === "POST") {
+    const body = await readBody(req);
+    const ids: string[] = Array.isArray(body.ids) ? body.ids : [];
+    ids.forEach((id, i) => { const p = projects.get(id); if (p) p.meta.order = i; });
+    saveRegistry();
+    return sendJson(res, 200, { ok: true });
+  }
+
+  // ---------- 项目作用域 API ----------
+  if (path === "/api/events") {
+    const p = resolveProject(url);
+    if (!p) return sendJson(res, 404, { error: "project not found" });
+    res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
+    res.write(`data: ${JSON.stringify({ type: "replay_start", ts: Date.now() })}\n\n`);
+    for (const ev of p.eventLog) res.write(`data: ${JSON.stringify(ev)}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: "hello", ts: Date.now() })}\n\n`);
+    p.sse.add(res);
+    req.on("close", () => p.sse.delete(res));
+    return;
+  }
+  if (path === "/api/state" && req.method === "GET") {
+    const p = resolveProject(url);
+    if (!p) return sendJson(res, 404, { error: "project not found" });
+    return sendJson(res, 200, statePayload(p));
+  }
+  if (path === "/api/map-config" && req.method === "GET") return sendJson(res, 200, { provider: resolveMapProvider(), ...resolveMapConfig(mapConfigFallback()) });
+
+  // ---------- 设置中心 ----------
+  if (path === "/api/settings" && req.method === "GET") return sendJson(res, 200, publicSettings(mapConfigFallback()));
+  if (path === "/api/settings" && req.method === "POST") {
+    const body = await readBody(req);
+    const patch: any = {};
+    if (body.llm && typeof body.llm === "object") {
+      patch.llm = {};
+      if (typeof body.llm.provider === "string" && body.llm.provider in LLM_PRESETS) patch.llm.provider = body.llm.provider as LlmProvider;
+      if (body.llm.temperature === null) patch.llm.temperature = null;
+      else if (typeof body.llm.temperature === "number" && body.llm.temperature >= 0 && body.llm.temperature <= 2) patch.llm.temperature = body.llm.temperature;
+      if (body.llm.conf && typeof body.llm.conf === "object") {
+        patch.llm.conf = {};
+        for (const [pid, c] of Object.entries<any>(body.llm.conf)) {
+          if (!(pid in LLM_PRESETS) || !c || typeof c !== "object") continue;
+          const cc: any = {};
+          if (typeof c.apiKey === "string" && c.apiKey.trim()) cc.apiKey = c.apiKey.trim();   // key 只增改、不清空
+          if (typeof c.baseUrl === "string") cc.baseUrl = c.baseUrl.trim();                  // 置空 = 回落预设
+          if (typeof c.model === "string") cc.model = c.model.trim();
+          patch.llm.conf[pid] = cc;
+        }
+      }
+    }
+    for (const sec of ["jev", "amap", "baidu"] as const) {
+      if (!body[sec] || typeof body[sec] !== "object") continue;
+      patch[sec] = {};
+      for (const [k, v] of Object.entries<any>(body[sec])) {
+        if (typeof v !== "string") continue;
+        if (k === "baseUrl") patch[sec][k] = v.trim();          // baseUrl 可置空回落默认
+        else if (v.trim()) patch[sec][k] = v.trim();            // key 类只增改
+      }
+    }
+    if (body.agent && typeof body.agent === "object") {
+      patch.agent = {};
+      if (body.agent.watchdogSeconds === null) patch.agent.watchdogSeconds = null;
+      else if (typeof body.agent.watchdogSeconds === "number" && body.agent.watchdogSeconds > 0 && body.agent.watchdogSeconds <= 3600) patch.agent.watchdogSeconds = body.agent.watchdogSeconds;
+    }
+    if (body.map && typeof body.map === "object" && (body.map.active === "amap" || body.map.active === "baidu")) {
+      patch.map = { active: body.map.active };   // 地图数据源互斥切换
+    }
+    saveSettings(patch);
+    // 热生效：各运行时的模型对象即时替换（getApiKey/temperature 本就动态解析；Jev/高德 key 每次调用时解析）
+    for (const p of projects.values()) { try { if (p.rt) (p.rt.agent.state as any).model = buildModel(); } catch { /* 单项目失败不影响其他 */ } }
+    return sendJson(res, 200, { ok: true, settings: publicSettings(mapConfigFallback()) });
+  }
+  // 连通性测试：用表单中未保存的值或已解析的配置试连 LLM/Jev/高德/百度
+  if (path === "/api/settings/test" && req.method === "POST") {
+    const body = await readBody(req);
+    return sendJson(res, 200, await testConnection(String(body.kind ?? ""), body));
+  }
+  if (path === "/api/reset" && req.method === "POST") {
+    const p = resolveProject(url);
+    if (!p) return sendJson(res, 404, { error: "project not found" });
+    if (p.busy) return sendJson(res, 409, { error: "agent busy" });
+    p.rt = undefined;
+    p.conv.length = 0;
+    p.eventLog.length = 0;
+    // 清掉磁盘状态，getRt 会以同一项目 id 重建空 trip（项目身份不变）
+    for (const f of ["trip.json", "ops.jsonl", "conv.json"]) { try { rmSync(join(RUNS_DIR, p.meta.id, f)); } catch { /* 不存在则跳过 */ } }
+    getRt(p);
+    touch(p);
+    broadcast(p, { type: "reset" });
+    return sendJson(res, 200, statePayload(p));
+  }
+  if (path === "/api/input" && req.method === "POST") {
+    const p = resolveProject(url);
+    if (!p) return sendJson(res, 404, { error: "project not found" });
+    if (p.busy) return sendJson(res, 409, { error: "agent busy" });
+    const body = await readBody(req);
+    const text = String(body.text ?? "").trim();
+    if (!text) return sendJson(res, 400, { error: "empty input" });
+    const rt = getRt(p);
+    p.busy = true;
+    p.conv.push({ role: "user", text, ts: Date.now() });
+    persistConv(p);
+    broadcast(p, { type: "turn_start", input: text });
+    // 看门狗：pi 的 agent-loop 是 while(true) 无迭代上限，模型固执重试被 block 的工具时会死循环。
+    // 超时强制 abort（默认 240s，可在设置中心调整），保证 demo 不挂死。
+    const wdMs = resolveWatchdogMs();
+    const wd = setTimeout(() => { console.error(`[watchdog] prompt 超时 ${wdMs / 1000}s，强制 abort`); rt.agent.abort(); }, wdMs);
+    try {
+      await rt.agent.prompt(text);
+      const last: any = [...rt.agent.state.messages].reverse().find((m: any) => m.role === "assistant");
+      const reply = typeof last?.content === "string" ? last.content
+        : (last?.content ?? []).map((c: any) => c.text ?? "").join("");
+      p.conv.push({ role: "agent", text: reply, ts: Date.now() });
+      persistConv(p);
+      touch(p);
+      broadcast(p, { type: "turn_end", reply });
+      return sendJson(res, 200, { reply, ...statePayload(p) });
+    } catch (e) {
+      broadcast(p, { type: "turn_error", error: (e as Error).message });
+      return sendJson(res, 500, { error: (e as Error).message });
+    } finally { clearTimeout(wd); p.busy = false; }
+  }
+
+  // 静态文件（仅限 UI 目录）
+  const file = path === "/" ? "app.html" : decodeURIComponent(path.replace(/^\//, ""));
+  const fp = join(UI_DIR, file);
+  if (!fp.startsWith(UI_DIR) || !existsSync(fp)) { res.writeHead(404); res.end("not found"); return; }
+  res.writeHead(200, { "content-type": file.endsWith(".html") ? "text/html; charset=utf-8" : "application/octet-stream" });
+  res.end(readFileSync(fp));
+});
+
+server.listen(PORT, () => console.log(`Riddle demo → http://localhost:${PORT}（${projects.size} 个项目）`));

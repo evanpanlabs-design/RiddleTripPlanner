@@ -1,0 +1,12 @@
+# 密钥与本地环境 · secrets & local env
+.env
+**/env.js
+
+# 运行数据（项目/对话/设置） · runtime data (projects / conversations / settings)
+APP/runs/
+
+# 系统与依赖 · system & deps
+.DS_Store
+node_modules/
+__pycache__/
+*.log
