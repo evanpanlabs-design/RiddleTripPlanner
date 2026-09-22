@@ -34,6 +34,7 @@ LLM 会很自然地"声称"自己改了什么、接受你根本没给过的约�
 - **实时可观测** —— 侧边控制台实时流出每个 Jev 判断的概率、门禁决策和队列活动。
 - **多项目笔记本 UI** —— 多个旅程并行，各自独立的状态、对话和事件流。
 - **设置中心** —— 所有 key 可在界面配置，带一键连通性测试（LLM / Jev / 高德 / 百度），保存即热生效，无需重启。
+- **Hybrid 地图数据** —— 高德负责底图/POI/同城驾车，百度 Direction v2 负责跨城大交通，返回**真实车次/航班号、时刻、票价**（G321、CA4113……）；全系统统一 GCJ02 坐标，无转换层。
 
 ![Jev 控制台](UI/demo-shots/console-jev-stream.png)
 
@@ -55,6 +56,7 @@ npm run serve                # → http://localhost:8787
 | Jev API key | [TypeSafe AI](https://www.typesafe.ai/) | 全部判断（必需） |
 | LLM key | DeepSeek / Anthropic / OpenAI / GLM… | 生成（必需） |
 | 高德 key | [高德开放平台](https://lbs.amap.com/) —— 一个 *Web服务* key + 一个 *Web端(JS API)* key 及其安全密钥 | POI 搜索 / 路线规划 / 地图底图 |
+| 百度 AK | [百度地图开放平台](https://lbs.baidu.com/) —— 一个 *服务端* AK | 跨城火车/飞机/大巴（可选；未配置时跨城段降级为留空待回填） |
 
 然后直接跟它说话：*"国庆想去重庆玩 6 天，成都出发，两个人，节奏慢一点"* →
 看 Jev 逐个门禁复核槽位；让它生成方案；汇报 *"酒店订好了"*，看只有住宿那一项
@@ -68,9 +70,9 @@ APP/            TypeScript 应用（agent 主循环、Jev 客户端、工具、�
   src/jev/            Jev 客户端与全部判断问题/阈值定义
   src/memory/         旅行图存储（event sourcing、撤销、持久化）
   src/scheduler/      阶段机 + 持久化 pending 队列
-  src/tools/          高德 Web 服务工具
+  src/tools/          高德（POI/驾车）+ 百度（跨城大交通）工具
   src/server.ts       多项目服务器（SSE 事件流、设置 API）
-  scripts/test-d4.ts  清单指代消解的 Jev 级回归脚本
+  scripts/            Jev 回归（test-d4）+ 百度大交通回归（test-baidu）
 UI/app.html     笔记本 UI（单文件，无构建步骤）
 SPEC/           架构与判断系统设计文档
 ```
@@ -91,7 +93,6 @@ flowchart LR
 
 ## 路线图
 
-- 混合地图数据：高德底图 + 百度大交通（火车/飞机）数据
 - 方案质量评测机制与阈值标定
 - LLM 生造 POI 名的城市校验
 

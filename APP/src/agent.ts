@@ -15,6 +15,7 @@ import { TH, d4ChecklistMatchQuestions } from "./jev/questions.ts";
 import { TripStore, tripSummary, planDesc, gateReport, type Trip } from "./memory/trip-store.ts";
 import { Scheduler } from "./scheduler/scheduler.ts";
 import { searchPoi, drivingRoute, geodesicM } from "./tools/amap.ts";
+import { intercityRoute, type IntercityPrefer } from "./tools/baidu.ts";
 import { resolveLlm } from "./settings.ts";
 
 const SYSTEM = `你是 Riddle，一个旅行规划 Copilot（像一本会回应的日记本）。
@@ -23,6 +24,7 @@ const SYSTEM = `你是 Riddle，一个旅行规划 Copilot（像一本会回应�
 - 用户陈述任何旅行约束（目的地/日期/天数/出发地/同行人/节奏/兴趣/住宿偏好）时，先调 update_slot 逐条记录（系统会复核，文本明确支持才会生效），然后再回应。
 - 用户汇报准备事项完成时，调 confirm_progress 勾选清单项：items 传 item_id（get_trip_state 可查清单），Jev 会逐项与用户原话复核，只勾被明确提及的项；用户确认方案整体时传 lock_events: true 锁定全部 Event。
 - 你能推断的时间/安排就推断，推断不了的如实留空请用户补充，绝不编造精确事实（班次/票价/营业时间）。
+- 跨城火车/飞机/大巴有真实数据源：用 get_route 的 transit 模式查询（返回真实车次/航班号、时刻、票价，为查询当日班次，会随出发日期变化——方案中应表述为"代表性班次"，出行前需复核）。
 - 判断由系统中的 Jev 引擎做出：你每次说话前会看到它对你上一输入的意图概率分析和当前阶段，请尊重这些判断。
 - 方案结构：每天由 Event 序列组成（visit/dine/transit/lodging），每天以住宿或场站收尾。
 - 生成方案前先确认天数与目的地已记录（get_trip_state 可查），然后调 apply_plan 提交完整方案。
@@ -116,10 +118,11 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
   const routeTool: AgentTool = {
     name: "get_route",
     label: "查询路线",
-    description: "查询两点间驾车路线（跨城仅驾车可用）或测地线距离。火车/飞机无数据源，应留空请用户回填。",
+    description: "查询两点间路线。drive=驾车（高德）；transit=跨城火车/飞机/大巴（百度，返回真实车次/航班号+时刻+票价，为查询当日班次，随日期变化，应按代表性班次使用）；geodesic=测地线距离。",
     parameters: Type.Object({
       from_name: Type.String(), to_name: Type.String(),
-      mode: Type.Union([Type.Literal("drive"), Type.Literal("geodesic")]),
+      mode: Type.Union([Type.Literal("drive"), Type.Literal("transit"), Type.Literal("geodesic")]),
+      prefer: Type.Optional(Type.Union([Type.Literal("train"), Type.Literal("flight"), Type.Literal("coach")])),
     }),
     execute: async (_id: string, params: any) => {
       const { from_name, to_name, mode } = params;
@@ -128,6 +131,10 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
       if (mode === "drive") {
         const r = await drivingRoute(a.geo, b.geo);
         return { content: [{ type: "text", text: JSON.stringify(r ?? { error: "无驾车路线" }) }], details: {} };
+      }
+      if (mode === "transit") {
+        const r = await intercityRoute(a.geo, b.geo, (params.prefer ?? "train") as IntercityPrefer);
+        return { content: [{ type: "text", text: JSON.stringify(r ?? { error: "无跨城公共交通方案" }) }], details: {} };
       }
       return { content: [{ type: "text", text: JSON.stringify({ distance_m: geodesicM(a.geo, b.geo), source: "geodesic" }) }], details: {} };
     },
@@ -496,10 +503,15 @@ async function applyDraft(trip: Trip, draft: any, emit?: (ev: RiddleEvent) => vo
     } catch { /* 单点失败降级为无坐标，不阻断落图 */ }
     emit?.({ type: "geo", done: ++done, total: nodeList.length });
   }
-  // 边数据补全：驾车走真实路线，geodesic 测地线，飞机/火车无数据源留空待回填
+  // 边数据补全：驾车走高德真实路线，跨城火车/飞机/大巴走百度（真实班次），geodesic 测地线兜底
   // （mode 是 LLM 写的自由文本，中英都收：drive/驾车/自驾…）
   const DRIVE = new Set(["drive", "驾车", "自驾", "开车", "车程", "包车"]);
   const GEO = new Set(["geodesic", "直线", "测地线"]);
+  const TRAIN = new Set(["train", "railway", "火车", "高铁", "动车", "城际"]);
+  const FLIGHT = new Set(["flight", "plane", "飞机", "航班"]);
+  const COACH = new Set(["coach", "bus", "大巴", "客运", "班车"]);
+  const transitPrefer = (mode: string): IntercityPrefer | null =>
+    TRAIN.has(mode) ? "train" : FLIGHT.has(mode) ? "flight" : COACH.has(mode) ? "coach" : null;
   for (const e of Object.values(edges)) {
     const a = nodes[e.from_id]?.geo, b = nodes[e.to_id]?.geo;
     if (!a || !b) continue;
@@ -511,6 +523,26 @@ async function applyDraft(trip: Trip, draft: any, emit?: (ev: RiddleEvent) => vo
       e.distance_m = Math.round(geodesicM(a, b)); e.data_source = "geodesic";
     } else if (GEO.has(e.mode)) {
       e.distance_m = Math.round(geodesicM(a, b)); e.data_source = "geodesic";
+    } else {
+      const prefer = transitPrefer(e.mode);
+      if (prefer) {
+        try {
+          const r = await intercityRoute(a, b, prefer);
+          if (r) {
+            e.distance_m = r.distance_m; e.duration_s = r.duration_s;
+            e.data_source = "baidu_transit"; e.geometry = r.geometry;
+            // 主班次信息回填事件（车次号/时刻/票价）——方案质量的关键事实
+            if (r.main) {
+              const ev = Object.values(events).find(x => x.anchor_kind === "edge" && x.anchor_ref === e.edge_id);
+              if (ev) {
+                ev.note = `${nodes[e.from_id].name}→${nodes[e.to_id].name}（${r.main.type === "flight" ? "航班" : r.main.type === "train" ? "车次" : "线路"} ${r.main.name ?? "?"}，${r.main.depart_at ?? "时刻待核"} 发）`;
+                ev.cost = r.main.price ?? r.price;
+              }
+            }
+            continue;
+          }
+        } catch { /* 百度未配置或查询失败：留空待回填 */ }
+      }
     }
   }
   trip.nodes = nodes; trip.edges = edges; trip.events = events; trip.checklist = checklist;

@@ -1,16 +1,13 @@
 /** 高德 Web Service（移植自 LAB/lab02 amap_tools.py，含 QPS 节流+退避）。
  * key 每次请求前经设置中心动态解析，保存设置后即时生效。
- * 数据源开关：map.active=baidu 时本模块整体门禁（百度适配器下一版接入）。 */
-import { resolveAmapWebKey, resolveMapProvider } from "../settings.ts";
+ * Hybrid 能力路由：高德固定承担 POI 检索/同城算路/底图，跨城大交通走百度（baidu.ts）。 */
+import { resolveAmapWebKey } from "../settings.ts";
 
 const BASE = "https://restapi.amap.com";
 const MIN_INTERVAL = 400;
 let lastCall = 0;
 
 async function amapGet(path: string, params: Record<string, string>, retries = 2): Promise<any> {
-  if (resolveMapProvider() !== "amap") {
-    throw new Error("地图数据源已切换为百度：百度适配器尚未接入（下一版），POI/路线解析暂不可用——可在设置中切回高德");
-  }
   const key = resolveAmapWebKey();
   for (let attempt = 0; attempt <= retries; attempt++) {
     const wait = MIN_INTERVAL - (Date.now() - lastCall);

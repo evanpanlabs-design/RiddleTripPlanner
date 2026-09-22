@@ -102,6 +102,10 @@ export function resolveAmapWebKey() {
   return loadSettings().amap.webServiceKey || process.env.AMAP_WEB_SERVICE_KEY || "";
 }
 
+export function resolveBaiduWebKey() {
+  return loadSettings().baidu.webServiceKey || process.env.BAIDU_MAP_AK || process.env.BAIDU_WEB_SERVICE_AK || "";
+}
+
 /** 前端 JSAPI 配置：设置文件优先，缺省回落到 lab01 env.js（由 server 解析传入） */
 export function resolveMapConfig(fallback: { key: string; securityJsCode: string }) {
   const a = loadSettings().amap;

@@ -24,7 +24,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { createRiddleAgent, buildModel, type RiddleRuntime } from "./agent.ts";
 import { TripStore, emptyTrip } from "./memory/trip-store.ts";
-import { LLM_PRESETS, loadSettings, saveSettings, publicSettings, resolveMapConfig, resolveMapProvider, resolveWatchdogMs, type LlmProvider } from "./settings.ts";
+import { LLM_PRESETS, loadSettings, saveSettings, publicSettings, resolveMapConfig, resolveWatchdogMs, type LlmProvider } from "./settings.ts";
 import { testConnection } from "./settings-test.ts";
 
 const UI_DIR = join(import.meta.dirname, "../../UI");
@@ -249,7 +249,7 @@ const server = createServer(async (req, res) => {
     if (!p) return sendJson(res, 404, { error: "project not found" });
     return sendJson(res, 200, statePayload(p));
   }
-  if (path === "/api/map-config" && req.method === "GET") return sendJson(res, 200, { provider: resolveMapProvider(), ...resolveMapConfig(mapConfigFallback()) });
+  if (path === "/api/map-config" && req.method === "GET") return sendJson(res, 200, resolveMapConfig(mapConfigFallback()));
 
   // ---------- 设置中心 ----------
   if (path === "/api/settings" && req.method === "GET") return sendJson(res, 200, publicSettings(mapConfigFallback()));

@@ -36,6 +36,7 @@ queue instead of a silent guess.
 - **Live observability** — a side console streams every Jev judgment with probabilities, gate decisions, and queue activity in real time.
 - **Multi-project notebook UI** — several trips in parallel, each with isolated state, conversation and event stream.
 - **Settings center** — all keys configurable in-app with one-click connectivity tests (LLM / Jev / AMap / Baidu), hot-applied without restart.
+- **Hybrid map data** — AMap serves map tiles, POI search and same-city driving; Baidu Direction v2 serves intercity transit with **real train/flight numbers, schedules and prices** (G321, CA4113…), all in one GCJ02 coordinate space, no conversion layer.
 
 ![Jev console](UI/demo-shots/console-jev-stream.png)
 
@@ -58,6 +59,7 @@ with connectivity tests):
 | Jev API key | [TypeSafe AI](https://www.typesafe.ai/) | all judgments (required) |
 | LLM key | DeepSeek / Anthropic / OpenAI / GLM… | generation (required) |
 | AMap keys | [高德开放平台](https://lbs.amap.com/) — one *Web服务* key + one *Web端(JS API)* key with its security code | POI search / routing / map tiles |
+| Baidu AK | [百度地图开放平台](https://lbs.baidu.com/) — one *服务端* AK | intercity train/flight/coach (optional; without it intercity legs degrade to blank-for-user) |
 
 Then just talk to it: *"国庆想去重庆玩 6 天，成都出发，两个人，节奏慢一点"* →
 watch Jev gate every slot, then ask it to generate a plan, report
@@ -71,9 +73,9 @@ APP/            TypeScript application (agent loop, Jev client, tools, server)
   src/jev/            Jev client & all judgment questions/thresholds
   src/memory/         trip graph store (event sourcing, undo, persistence)
   src/scheduler/      stage machine + persistent pending queue
-  src/tools/          AMap web-service tools
+  src/tools/          AMap (POI/driving) + Baidu (intercity transit) tools
   src/server.ts       multi-project server (SSE event stream, settings API)
-  scripts/test-d4.ts  Jev-level regression for checklist coreference
+  scripts/            Jev regression (test-d4) + Baidu transit regression (test-baidu)
 UI/app.html     the notebook UI (single file, no build step)
 SPEC/           architecture & judgment-system design docs (Chinese)
 ```
@@ -95,7 +97,6 @@ flowchart LR
 
 ## Roadmap
 
-- Hybrid map data: AMap tiles + Baidu transit (train/flight) data
 - Plan-quality evaluation harness & threshold calibration
 - City-validation for LLM-hallucinated POI names
 

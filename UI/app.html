@@ -457,7 +457,7 @@
       <div class="mo-sec">
         <div class="mo-sec-h"><h3>高德地图</h3><span><span class="mo-result" id="testAmapMsg"></span><button class="mo-test" id="testAmap" type="button">测试连接</button></span></div>
         <div class="mo-desc">Web 服务 key 用于 POI / 驾车路线解析（保存即生效，测试走此 key）；JSAPI key 用于前端地图渲染（保存后刷新页面生效，需在页面上实际渲染验证）。</div>
-        <div class="mo-switch-row"><label class="switch"><input type="checkbox" id="swAmap"><i></i></label><span>启用高德作为地图数据源（与百度互斥）</span></div>
+        <div class="mo-desc">能力分工：高德 = 底图渲染 + POI 检索 + 同城驾车（固定承担）。</div>
         <div class="mo-row"><label>Web 服务 Key</label><input id="setAmapWeb" type="password" autocomplete="off" spellcheck="false"></div>
         <div class="mo-2col">
           <div class="mo-row"><label>JSAPI Key</label><input id="setAmapJs" type="password" autocomplete="off" spellcheck="false"></div>
@@ -465,9 +465,8 @@
         </div>
       </div>
       <div class="mo-sec">
-        <div class="mo-sec-h"><h3>百度地图（预留）</h3><span><span class="mo-result" id="testBaiduMsg"></span><button class="mo-test" id="testBaidu" type="button">测试连接</button></span></div>
-        <div class="mo-desc">下一版地图迁移（高德 + 百度）的口子——key 可存、连通性可测；注意：启用后 POI/路线解析会暂停（适配器尚未接入），前端渲染仍走高德 JSAPI。</div>
-        <div class="mo-switch-row"><label class="switch"><input type="checkbox" id="swBaidu"><i></i></label><span>启用百度作为地图数据源（与高德互斥）</span></div>
+        <div class="mo-sec-h"><h3>百度地图</h3><span><span class="mo-result" id="testBaiduMsg"></span><button class="mo-test" id="testBaidu" type="button">测试连接</button></span></div>
+        <div class="mo-desc">能力分工：百度 = 跨城大交通（火车/飞机/大巴，真实班次+时刻+票价）——配置服务端 AK 即自动启用，未配置时跨城段降级为留空待回填。浏览器端 AK 预留。</div>
         <div class="mo-2col">
           <div class="mo-row"><label>服务端 AK</label><input id="setBaiduWeb" type="password" autocomplete="off" spellcheck="false"></div>
           <div class="mo-row"><label>浏览器端 AK</label><input id="setBaiduJs" type="password" autocomplete="off" spellcheck="false"></div>
@@ -671,13 +670,13 @@ function renderMap(){
   const nodes = Object.values(t.nodes).filter(n=>n.geo);
   $('mapEmpty').style.display = nodes.length ? 'none' : 'flex';
   $('mapTitle').textContent = nodes.length ? (t.destination?.join(' · ') || '已落图') : '未落图';
-  $('mapStats').textContent = `${Object.keys(t.nodes).length} NODES · ${Object.keys(t.edges).length} EDGES · DATA: AMAP LIVE`;
+  $('mapStats').textContent = `${Object.keys(t.nodes).length} NODES · ${Object.keys(t.edges).length} EDGES · DATA: AMAP+BAIDU LIVE`;
   // 边
   for(const e of Object.values(t.edges)){
     const a = t.nodes[e.from_id]?.geo, b = t.nodes[e.to_id]?.geo;
     if(!a || !b) continue;
-    const solid = e.data_source === 'amap_driving';
-    /* 有真实路径用真实路径（amap_driving geometry），否则起讫直线 */
+    const solid = e.data_source === 'amap_driving' || e.data_source === 'baidu_transit';
+    /* 有真实路径用真实路径（amap_driving / baidu_transit geometry），否则起讫直线 */
     const path = (Array.isArray(e.geometry) && e.geometry.length > 1)
       ? e.geometry.map(p=>[p[0],p[1]])
       : [[a.lng,a.lat],[b.lng,b.lat]];
@@ -1076,8 +1075,6 @@ function fillSettingsForm(){
   $('setAmapCode').value = ''; $('setAmapCode').placeholder = keyPh(SET.amap.code);
   $('setBaiduWeb').value = ''; $('setBaiduWeb').placeholder = keyPh(SET.baidu.web);
   $('setBaiduJs').value = ''; $('setBaiduJs').placeholder = keyPh(SET.baidu.jsapi);
-  const active = SET.map?.active || 'amap';
-  $('swAmap').checked = active === 'amap'; $('swBaidu').checked = active === 'baidu';
   ['testLlmMsg','testJevMsg','testAmapMsg','testBaiduMsg'].forEach(id=>{ $(id).textContent=''; $(id).className='mo-result'; });
   $('setWatchdog').value = SET.agent.watchdogSeconds ?? ''; $('setWatchdog').placeholder = String(SET.agent.effectiveWatchdogSeconds);
   fillLlmConf();
@@ -1103,7 +1100,6 @@ $('setSave').onclick = async ()=>{
     llm: { provider: pid, temperature: t===''?null:+t, conf: { [pid]: { baseUrl: $('setLlmBase').value.trim(), model: $('setLlmModel').value.trim() } } },
     jev: { baseUrl: $('setJevBase').value.trim() },
     amap: {}, baidu: {},
-    map: { active: $('swBaidu').checked ? 'baidu' : 'amap' },
     agent: { watchdogSeconds: wd===''?null:+wd },
   };
   const putKey = (sec, k, v)=>{ v=v.trim(); if(v) body[sec][k]=v; };
@@ -1123,10 +1119,6 @@ $('setSave').onclick = async ()=>{
   }catch(e){ $('setMsg').textContent = `保存失败：${e.message}`; }
   finally{ $('setSave').disabled = false; }
 };
-
-/* 数据源开关互斥（任何时候恰有一个启用） */
-$('swAmap').addEventListener('change', ()=>{ $('swBaidu').checked = !$('swAmap').checked; });
-$('swBaidu').addEventListener('change', ()=>{ $('swAmap').checked = !$('swBaidu').checked; });
 
 /* 连通性测试：优先用表单里未保存的值，留空回落服务端已解析配置 */
 async function testConn(kind, extra, msgEl, btn){
