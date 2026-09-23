@@ -572,7 +572,26 @@ function renderConv(){
       <div class="who">${m.role==='user'?'我':'Riddle'}</div>
       <p>${md(esc(m.text))}</p>
     </div>`).join('');
+  // 0.4.2 真阻塞 HITL：待决问题以卡片挂在对话尾部——点按钮产生结构化决定（/api/pending/decide），
+  // 或直接文字回复（Jev 自然语言消费兜底）；决定前卡片不消失，挂起操作不恢复。
+  for(const p of (S.pending||[])) box.appendChild(pendCardEl(p));
   nb.scrollTop = nb.scrollHeight;
+}
+function pendCardEl(p){
+  const el = document.createElement('div');
+  el.className = 'entry agent';
+  const conf = p.context&&p.context.confidence!=null ? ` <span class="mono">置信 ${Number(p.context.confidence).toFixed(2)}</span>` : '';
+  el.innerHTML = `<div class="jev-note pend-live">
+    <span class="scales">⚖</span><span class="mono">${esc(PEND_KIND[p.kind]||p.kind)}</span>${conf} —— ${esc(p.question)}
+    <div class="pend-actions">
+      <button class="btn">确认</button>
+      <button class="btn ghost">先不了</button>
+    </div>
+  </div>`;
+  const [yes,no] = el.querySelectorAll('button');
+  yes.onclick = ()=>decidePending(p.id, true);
+  no.onclick = ()=>decidePending(p.id, false);
+  return el;
 }
 
 function renderHeader(){
@@ -902,14 +921,14 @@ function renderPending(){
     return `<div class="pend-card">
       <div class="pend-top"><span class="pend-kind">${PEND_KIND[p.kind]||'⚖ '+esc(p.kind)}</span><span class="pend-conf">挂起待确认${conf}</span></div>
       <div class="pend-q">${esc(p.question)}</div>
-      <div class="pend-revert">回复「确认」或「先不了」都行——系统会先存 restore_trip 快照，选错了可随时回滚。</div>
+      <div class="pend-revert">点按钮或在聊天里回复「确认」/「先不了」都行——系统会先存 restore_trip 快照，选错了可随时回滚。</div>
       <div class="pend-actions">
-        <button class="btn" data-say="确认，按这个调整。">确认</button>
-        <button class="btn ghost" data-say="先不了，维持现状。">先不了</button>
+        <button class="btn" data-pid="${esc(p.id)}" data-yes="1">确认</button>
+        <button class="btn ghost" data-pid="${esc(p.id)}" data-yes="0">先不了</button>
       </div>
     </div>`;
   }).join('');
-  $('pendList').querySelectorAll('[data-say]').forEach(b=>b.onclick=()=>sendInput(b.dataset.say));
+  $('pendList').querySelectorAll('[data-pid]').forEach(b=>b.onclick=()=>decidePending(b.dataset.pid, b.dataset.yes==='1'));
 }
 
 /* ================= 动态流（三合一）：判断/工具/操作合入同一时间流 =================
@@ -988,19 +1007,6 @@ function addEntry(role, text, date){
   nb.scrollTop = nb.scrollHeight;
   return el;
 }
-function addJevNote(html, active=true){
-  const el = document.createElement('div');
-  el.className = 'entry agent';
-  el.innerHTML = `<div class="jev-note ${active?'':'consumed'}"><span class="scales">⚖</span>${html}</div>`;
-  nb.appendChild(el);
-  nb.scrollTop = nb.scrollHeight;
-}
-function consumeNotes(){
-  nb.querySelectorAll('.jev-note:not(.consumed)').forEach(n=>{
-    n.classList.add('consumed');
-    if(!n.querySelector('.state-tag')) n.insertAdjacentHTML('beforeend','<span class="state-tag">已消费</span>');
-  });
-}
 let thinkingEl = null;
 function showThinking(on){
   if(on && !thinkingEl){
@@ -1063,6 +1069,30 @@ async function sendInput(text){
     $('nbText').disabled = false; $('nbSend').disabled = false; $('nbText').focus();
   }
 }
+/* 0.4.2 卡片真阻塞 HITL：结构化决定直达服务端（不经 Jev 自然语言判断），
+ * 服务端消费 pending 并驱动 agent 恢复/放弃挂起操作，响应携带权威状态。 */
+async function decidePending(id, approve){
+  if(busy) return;
+  busy = true;
+  $('nbText').disabled = true; $('nbSend').disabled = true;
+  showThinking(true);
+  try{
+    const r = await fetch('/api/pending/decide'+pj(), { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({id, approve}) });
+    const data = await r.json();
+    showThinking(false);
+    if(!r.ok){ addEntry('agent', `（系统）${data.error || ('出错了：'+r.status)}`); fetchStateSoon(); }
+    else{
+      S = { trip: data.trip, pending: data.pending, ops: data.ops, conv: data.conv };
+      renderAll();
+    }
+  }catch(e){
+    showThinking(false);
+    addEntry('agent', `（系统）请求失败：${e.message}`);
+  }finally{
+    busy = false;
+    $('nbText').disabled = false; $('nbSend').disabled = false;
+  }
+}
 $('nbForm').addEventListener('submit', e=>{ e.preventDefault(); sendInput($('nbText').value); });
 
 /* ================= SSE ================= */
@@ -1072,9 +1102,8 @@ function connectSSE(){
   es.onmessage = m=>{
     let ev; try{ ev = JSON.parse(m.data); }catch{ return; }
     if(ev.type==='replay_start'){
-      /* 重连重放：清空动态流与批注，由缓冲事件重建（幂等）；操作日志重 diff 补入 */
+      /* 重连重放：清空动态流，由缓冲事件重建（幂等）；操作日志重 diff 补入 */
       $('pane-feed').innerHTML=''; lastOpSeq=0;
-      nb.querySelectorAll('.jev-note').forEach(n=>n.closest('.entry')?.remove());
       return;
     }
     if(ev.type==='hello'){ $('cbJev').textContent = 'online'; return; }
@@ -1093,11 +1122,13 @@ function connectSSE(){
       return;
     }
     if(ev.type==='pending'){
+      /* 卡片由 renderConv 按 S.pending 权威渲染（fetchStateSoon 触发），决定后自动消失 */
       if(ev.action==='enqueue'){
-        addJevNote(`<span class="mono">${esc(PEND_KIND[ev.kind]||ev.kind)}</span> —— ${esc(ev.question)}（到底部 console 或直接回复确认）`);
         feedLine('judge','待确认', `有个问题需要你决定：${esc(ev.question)}`, `类型 ${esc(ev.kind)}`, ev.ts);
       }else if(ev.action==='consume'){
-        consumeNotes();
+        feedLine('judge','待确认', ev.source==='card'
+          ? `你在卡片中${ev.approved?'确认':'拒绝'}了「${esc(String(ev.question||'').slice(0,40))}」`
+          : '挂起的问题已被你的回答解决', null, ev.ts);
       }
       fetchStateSoon();
       return;

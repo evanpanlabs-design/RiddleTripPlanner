@@ -12,6 +12,7 @@
  *   POST /api/projects/reorder      { ids: [...] } → 按数组顺序写入 order
  *   GET  /api/state?project=   → { trip, pending, ops, conv }
  *   POST /api/input?project=   → { text } → 跑一轮 agent.prompt
+ *   POST /api/pending/decide?project= → { id, approve } → 卡片结构化决定：消费 pending + 恢复/放弃挂起操作（0.4.2）
  *   POST /api/reset?project=   → 该项目的 trip 推倒重来
  *   GET  /api/events?project=  → SSE：jev/pending/geo/gate/tool/turn_* 事件流（按项目隔离）
  *   GET  /api/map-config       → 高德 JSAPI key + securityJsCode
@@ -215,6 +216,40 @@ async function readBody(req: IncomingMessage): Promise<any> {
   try { return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}"); } catch { return {}; }
 }
 
+/** 跑一轮 agent turn（/api/input 与 /api/pending/decide 共用）：
+ * busy 锁 + 看门狗 + 空回复兜底 + agent 回复入 conv + turn 事件。调用前需自行 busy 检查与 conv 记入用户消息。 */
+async function runTurn(p: Project, text: string, res: ServerResponse) {
+  const rt = getRt(p);
+  p.busy = true;
+  broadcast(p, { type: "turn_start", input: text });
+  // 看门狗：pi 的 agent-loop 是 while(true) 无迭代上限，模型固执重试被 block 的工具时会死循环。
+  // 超时强制 abort（默认 240s，可在设置中心调整），保证 demo 不挂死。
+  const wdMs = resolveWatchdogMs();
+  const wd = setTimeout(() => { console.error(`[watchdog] prompt 超时 ${wdMs / 1000}s，强制 abort`); rt.agent.abort(); }, wdMs);
+  try {
+    await rt.agent.prompt(text);
+    const last: any = [...rt.agent.state.messages].reverse().find((m: any) => m.role === "assistant");
+    const reply = typeof last?.content === "string" ? last.content
+      : (last?.content ?? []).map((c: any) => c.text ?? "").join("");
+    // 空回复诊断：模型返回空内容时记录 stopReason/errorMessage（网关限流、schema 失败放弃等场景的指纹）
+    let finalReply = reply;
+    if (!reply.trim()) {
+      const errMsg = String((last as any)?.errorMessage ?? "");
+      console.warn(`[empty-reply] project=${p.meta.id} stopReason=${last?.stopReason ?? "?"} err=${errMsg.slice(0, 200)} messages=${rt.agent.state.messages.length}`);
+      // 对用户不展示空气泡：把模型层错误翻成可操作的兜底文案（demo 体验兜底）
+      finalReply = `（这轮模型网关没走通${/429|限制|rate/i.test(errMsg) ? "——触发了每分钟请求上限" : ""}，稍等十几秒把刚才的话再发一次就好，上下文都在）`;
+    }
+    p.conv.push({ role: "agent", text: finalReply, ts: Date.now() });
+    persistConv(p);
+    touch(p);
+    broadcast(p, { type: "turn_end", reply: finalReply });
+    return sendJson(res, 200, { reply: finalReply, ...statePayload(p) });
+  } catch (e) {
+    broadcast(p, { type: "turn_error", error: (e as Error).message });
+    return sendJson(res, 500, { error: (e as Error).message });
+  } finally { clearTimeout(wd); p.busy = false; }
+}
+
 loadRegistry();
 if (!projects.size) createProject();
 
@@ -378,37 +413,27 @@ const server = createServer(async (req, res) => {
     const body = await readBody(req);
     const text = String(body.text ?? "").trim();
     if (!text) return sendJson(res, 400, { error: "empty input" });
-    const rt = getRt(p);
-    p.busy = true;
     p.conv.push({ role: "user", text, ts: Date.now() });
     persistConv(p);
-    broadcast(p, { type: "turn_start", input: text });
-    // 看门狗：pi 的 agent-loop 是 while(true) 无迭代上限，模型固执重试被 block 的工具时会死循环。
-    // 超时强制 abort（默认 240s，可在设置中心调整），保证 demo 不挂死。
-    const wdMs = resolveWatchdogMs();
-    const wd = setTimeout(() => { console.error(`[watchdog] prompt 超时 ${wdMs / 1000}s，强制 abort`); rt.agent.abort(); }, wdMs);
-    try {
-      await rt.agent.prompt(text);
-      const last: any = [...rt.agent.state.messages].reverse().find((m: any) => m.role === "assistant");
-      const reply = typeof last?.content === "string" ? last.content
-        : (last?.content ?? []).map((c: any) => c.text ?? "").join("");
-      // 空回复诊断：模型返回空内容时记录 stopReason/errorMessage（网关限流、schema 失败放弃等场景的指纹）
-      let finalReply = reply;
-      if (!reply.trim()) {
-        const errMsg = String((last as any)?.errorMessage ?? "");
-        console.warn(`[empty-reply] project=${p.meta.id} stopReason=${last?.stopReason ?? "?"} err=${errMsg.slice(0, 200)} messages=${rt.agent.state.messages.length}`);
-        // 对用户不展示空气泡：把模型层错误翻成可操作的兜底文案（demo 体验兜底）
-        finalReply = `（这轮模型网关没走通${/429|限制|rate/i.test(errMsg) ? "——触发了每分钟请求上限" : ""}，稍等十几秒把刚才的话再发一次就好，上下文都在）`;
-      }
-      p.conv.push({ role: "agent", text: finalReply, ts: Date.now() });
-      persistConv(p);
-      touch(p);
-      broadcast(p, { type: "turn_end", reply: finalReply });
-      return sendJson(res, 200, { reply: finalReply, ...statePayload(p) });
-    } catch (e) {
-      broadcast(p, { type: "turn_error", error: (e as Error).message });
-      return sendJson(res, 500, { error: (e as Error).message });
-    } finally { clearTimeout(wd); p.busy = false; }
+    return runTurn(p, text, res);
+  }
+  // 0.4.2 卡片真阻塞 HITL：结构化决定（聊天卡片/待确认面板按钮）→ 直接消费 pending（不经 Jev 意图判断），
+  // 同意则颁发一次性放行令牌并驱动 agent 恢复被挂起的操作；拒绝则放弃。自然语言回答是兜底路径（transformContext）。
+  if (path === "/api/pending/decide" && req.method === "POST") {
+    const p = resolveProject(url);
+    if (!p) return sendJson(res, 404, { error: "project not found" });
+    if (p.busy) return sendJson(res, 409, { error: "agent busy" });
+    const body = await readBody(req);
+    const rt = getRt(p);
+    const approve = !!body.approve;
+    const pending = rt.decidePending(String(body.id ?? ""), approve);
+    if (!pending) return sendJson(res, 404, { error: "pending 不存在或已被回答" });
+    p.conv.push({ role: "user", text: `${approve ? "✓ 确认" : "✗ 先不了"} —— ${pending.question}`, ts: Date.now() });
+    persistConv(p);
+    const promptText = approve
+      ? `我在确认卡片中明确同意了待决问题「${pending.question}」。这是结构化决定（不需要再判断我的意图）；系统已颁发放行令牌，请直接恢复执行被挂起的操作（上下文：${JSON.stringify(pending.context)}），不要重复询问确认。`
+      : `我在确认卡片中明确拒绝了待决问题「${pending.question}」。这是结构化决定：视为放弃该挂起操作——不要恢复执行、维持现状，简要确认即可，无需再追问这个问题。`;
+    return runTurn(p, promptText, res);
   }
 
   // 静态文件（仅限 UI 目录）

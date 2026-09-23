@@ -18,7 +18,7 @@ import { assembleDraft, checkChainCompleteness, isAoi, isPoi, isRoute, childrenO
 import { syncProjection } from "./memory/project-v1.ts";
 import { enrichFromBaidu } from "./tools/baidu-place.ts";
 import { fetchAoiBoundary, convexHull } from "./tools/osm-aoi.ts";
-import { Scheduler } from "./scheduler/scheduler.ts";
+import { Scheduler, type PendingQuestion } from "./scheduler/scheduler.ts";
 import { searchPoi, drivingRoute, walkingRoute, bicyclingRoute, cityTransitRoute, geodesicM } from "./tools/amap.ts";
 import { intercityRoute, type IntercityPrefer } from "./tools/baidu.ts";
 import { resolveLlm } from "./settings.ts";
@@ -82,6 +82,9 @@ export interface RiddleRuntime {
   scheduler: Scheduler;
   onEvent: (fn: (ev: RiddleEvent) => void) => void;
   emit: (ev: RiddleEvent) => void;
+  /** 0.4.2 卡片真阻塞 HITL：结构化决定直接消费 pending（无需 Jev 判“回应≠同意”），
+   * 同意则颁发一次性放行令牌；返回被消费的 pending（不存在=已被回答过）。 */
+  decidePending: (id: string, approve: boolean) => PendingQuestion | null;
 }
 
 function textOf(msg: any): string {
@@ -377,7 +380,7 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
           kind: "slot_override",
           context: { slot: args.slot, value: args.value },
         });
-        emit({ type: "pending", action: "enqueue", kind: q.kind, question: q.question });
+        emit({ type: "pending", action: "enqueue", kind: q.kind, id: q.id, question: q.question });
         return { block: true, reason: `该槽位已有值 ${JSON.stringify(cur)}，覆盖需用户显式确认。已向用户发出确认问题（pending）。请勿重试本工具——直接结束本轮，向用户复述这个确认问题，等用户回答后再恢复执行。` };
       }
     }
@@ -392,7 +395,7 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
           kind: "d6_radius",
           context: { op: lastUser, radius: d6.radius, confidence: d6.confidence },
         });
-        emit({ type: "pending", action: "enqueue", kind: q.kind, question: q.question });
+        emit({ type: "pending", action: "enqueue", kind: q.kind, id: q.id, question: q.question });
         return { block: true, reason: `D6 传播半径判定为 ${d6.radius}，置信度 ${d6.confidence.toFixed(2)} 低于自动执行阈值。已转入人工确认（pending）。请勿重试本工具——直接结束本轮，向用户复述这个确认问题，等用户确认后再恢复执行。` };
       }
     }
@@ -424,7 +427,7 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
             kind: "checklist_confirm",
             context: { item_ids: blocked },
           });
-          emit({ type: "pending", action: "enqueue", kind: q.kind, question: q.question });
+          emit({ type: "pending", action: "enqueue", kind: q.kind, id: q.id, question: q.question });
         }
         const approvedHere = preApproved.concat(passed);
         if (!approvedHere.length && !args.lock_events) {
@@ -434,6 +437,21 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
       }
     }
     return undefined;
+  }
+
+  // ---------------- 卡片真阻塞 HITL（0.4.2） ----------------
+  // 结构化决定（UI 卡片按钮）直接消费 pending：决定本身是确定的，不再经 Jev 判「回应≠同意」。
+  // 同意 → 颁发与 transformContext 自然语言路径相同的一次性放行令牌；拒绝 → 只出队，操作放弃。
+  function decidePending(id: string, approve: boolean): PendingQuestion | null {
+    const pending = scheduler.remove(id);
+    if (!pending) return null;
+    emit({ type: "pending", action: "consume", kind: pending.kind, id: pending.id, question: pending.question, approved: approve, source: "card" });
+    if (approve) {
+      if (pending.kind === "slot_override") approvals.add(`slot:${(pending.context as any).slot}:${canon((pending.context as any).value)}`);
+      if (pending.kind === "d6_radius") approvals.add("d6:apply_plan");
+      if (pending.kind === "checklist_confirm") for (const cid of (pending.context as any).item_ids ?? []) approvals.add(`chk:${cid}`);
+    }
+    return pending;
   }
 
   // ---------------- Jev 注入点 2：transformContext 感知 ----------------
@@ -464,7 +482,7 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
               break;
             }
             scheduler.dequeue();
-            emit({ type: "pending", action: "consume", kind: pending.kind, question: pending.question });
+            emit({ type: "pending", action: "consume", kind: pending.kind, id: pending.id, question: pending.question, approved: approved >= 0.6, source: "chat" });
             const needsApproval = pending.kind === "slot_override" || pending.kind === "d6_radius" || pending.kind === "checklist_confirm";
             if (needsApproval && approved < 0.6) {
               if (pending.kind === "checklist_confirm") {
@@ -516,7 +534,7 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
     prepareNextTurn,
   });
 
-  return { agent, store, jev, scheduler, onEvent, emit };
+  return { agent, store, jev, scheduler, onEvent, emit, decidePending };
 }
 
 /** 草案落图 v2（SPEC/event-model-v2.md §6 服务端组装职责 + §7 边界 fallback 链）。

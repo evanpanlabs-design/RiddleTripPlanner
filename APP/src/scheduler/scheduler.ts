@@ -48,6 +48,15 @@ export class Scheduler {
     return item;
   }
 
+  /** 按 id 移除（0.4.2 卡片决策：用户点的卡片不一定是队首） */
+  remove(id: string): PendingQuestion | undefined {
+    const i = this.queue.findIndex(q => q.id === id);
+    if (i < 0) return undefined;
+    const [item] = this.queue.splice(i, 1);
+    this.persist();
+    return item;
+  }
+
   get size() { return this.queue.length; }
 
   list(): readonly PendingQuestion[] { return this.queue; }

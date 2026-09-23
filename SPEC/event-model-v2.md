@@ -1,12 +1,15 @@
 # Riddle 事件模型 v2 Schema
 
-> 版本：v0.2（2026-09-23） | 状态：**已审过，0.4.1 已落地**
+> 版本：v0.2（2026-09-23） | 状态：**已审过，0.4.2 已落地**
 > 上游依据：0.4.x 设计讨论共识（事件分类建模 / 事件图管理 / 数据层百度+OSM Hybrid）
 > 读者：工程、Agent 开发。与 SPEC.md 的关系：SPEC 描述 v1 现行模型，本文档是 v2 的迁移目标。
 > 0.4.1 实现位置：`APP/src/memory/event-v2.ts`（Schema + 组装 + V8）、`migrate-v2.ts`（惰性迁移）、
 > `project-v1.ts`（v2→v1 投影兼容桥，0.4.3 前台切换后退役）、`tools/baidu-place.ts`（place detail 富化）、
 > `tools/osm-aoi.ts`（OSM 边界获取器）；纯逻辑单测 `APP/scripts/test-v2.ts`（`npm run test:v2`）。
 > 落地偏差说明：v1 投影是 0.4.1 的兼容策略——v2 树为唯一事实源，UI/D7/摘要暂消费投影，与本文件不冲突。
+> 0.4.2 实现位置：V8 嵌套感知在 `event-v2.ts checkChainCompleteness`（子树端点等价 + AOI 内部链条），并进
+> `agent.ts` 的 D7 统一校验报告；卡片真阻塞 HITL = `agent.ts decidePending` + `server.ts /api/pending/decide`
+> + `UI/app.html` 聊天卡片（自然语言消费降为兜底路径）。
 
 ---
 
@@ -258,7 +261,7 @@ provenance：迁移数据的事件级 = llm_inference，geo/geometry 字段级 =
 | 版本 | 内容 |
 |------|------|
 | **0.4.1**（本文档审过后动工） | Schema v2 落地（类型定义 + 迁移器 + applyDraft v2 组装）；百度 place detail 接入（opening_detail/price/rating/scope_grade/classified_poi_tag 填充）；OSM AOI 异步获取器 + 缓存 + 包络兜底 |
-| 0.4.2 | V8 嵌套感知图完整性校验进 D7；聊天卡片真阻塞 HITL |
+| **0.4.2**（已落地） | V8 嵌套感知图完整性校验进 D7；聊天卡片真阻塞 HITL |
 | 0.4.3 | 时间线结构化展示（消费 v2 树）；Jev 方案质量判断（动线折返/强度均匀，吃 price/rating/opening_detail 字段） |
 
 ## 11. 明确不做（本版）

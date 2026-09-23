@@ -1,6 +1,6 @@
 {
   "name": "riddle-trip-planner",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Riddle — an agent-based travel-planning copilot. LLM generates, Jev judges. 生成归 LLM，判断归 Jev。",
   "type": "module",
   "scripts": {
@@ -14,6 +14,7 @@
     "test:place": "tsx scripts/test-place.ts",
     "test:judge": "tsx scripts/test-llm-judge.ts",
     "test:fallback": "tsx scripts/test-fallback.ts",
+    "test:hitl": "tsx scripts/test-hitl.ts",
     "typecheck": "tsc"
   },
   "keywords": [
