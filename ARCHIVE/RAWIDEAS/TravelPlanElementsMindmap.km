@@ -1,0 +1,187 @@
+{
+    "root": {
+        "data": {
+            "id": "dlku6navs400",
+            "created": 1789977830530,
+            "text": "旅行规划助手Riddle"
+        },
+        "children": [
+            {
+                "data": {
+                    "id": "dlku9aiyq200",
+                    "created": 1789978037813,
+                    "text": "1. 核心痛点",
+                    "layout_mind_offset": {
+                        "x": 2,
+                        "y": -126
+                    }
+                },
+                "children": [
+                    {
+                        "data": {
+                            "id": "dlkua8f7qpk0",
+                            "created": 1789978111597,
+                            "text": "A 需求模糊"
+                        },
+                        "children": [
+                            {
+                                "data": {
+                                    "id": "dlkuaz5pi1s0",
+                                    "created": 1789978169795,
+                                    "text": "A1 只知道想去什么城市/片区，不知道具体点位"
+                                },
+                                "children": []
+                            },
+                            {
+                                "data": {
+                                    "id": "dlkub3u6aj40",
+                                    "created": 1789978179982,
+                                    "text": "A2 知道点位，不知道怎么游玩"
+                                },
+                                "children": []
+                            },
+                            {
+                                "data": {
+                                    "id": "dlkubdlncww0",
+                                    "created": 1789978201234,
+                                    "text": "A3 知道点位+玩法，不知道怎么划分行程"
+                                },
+                                "children": []
+                            },
+                            {
+                                "data": {
+                                    "id": "dlkubvf33bs0",
+                                    "created": 1789978240019,
+                                    "text": "A4 知道点位和玩法，不知道怎么选酒店和大交通"
+                                },
+                                "children": []
+                            },
+                            {
+                                "data": {
+                                    "id": "dlkuc5tbkio0",
+                                    "created": 1789978262648,
+                                    "text": "A5 确定行程后，不知道该怎么准备怕遗漏"
+                                },
+                                "children": []
+                            }
+                        ]
+                    },
+                    {
+                        "data": {
+                            "id": "dlkuapxweoo0",
+                            "created": 1789978149732,
+                            "text": "B 竞品分析"
+                        },
+                        "children": [
+                            {
+                                "data": {
+                                    "id": "dlkud08nsig0",
+                                    "created": 1789978328879,
+                                    "text": "B1 地图类产品 提供POI+路由能力 能提供位置信息和路由（路径+耗时）信息"
+                                },
+                                "children": [
+                                    {
+                                        "data": {
+                                            "id": "dlkuihjmqi00",
+                                            "created": 1789978758368,
+                                            "text": "痛点：用户心智集中在分离的查询任务和点位全览，是在大致有需求后的调研阶段"
+                                        },
+                                        "children": []
+                                    }
+                                ]
+                            },
+                            {
+                                "data": {
+                                    "id": "dlkuf3ljo5k0",
+                                    "created": 1789978492917,
+                                    "text": "B2 OTA平台 提供酒店定价和预定入口，可以根据地图选酒店下单"
+                                },
+                                "children": [
+                                    {
+                                        "data": {
+                                            "id": "dlkujbhqh340",
+                                            "created": 1789978823557,
+                                            "text": "痛点：行程没有大致框架，很难说好订哪个片区的酒店"
+                                        },
+                                        "children": []
+                                    }
+                                ]
+                            },
+                            {
+                                "data": {
+                                    "id": "dlkujq1yhsw0",
+                                    "created": 1789978855255,
+                                    "text": "B3 小红书 提供自然语言经验，偶尔有AI地图"
+                                },
+                                "children": [
+                                    {
+                                        "data": {
+                                            "id": "dlkuliftsj40",
+                                            "created": 1789978995407,
+                                            "text": "痛点：自然语言信息离散，难以快速掌握全貌，形成结构化的计划"
+                                        },
+                                        "children": []
+                                    }
+                                ]
+                            },
+                            {
+                                "data": {
+                                    "id": "dlkunlsj15c0",
+                                    "created": 1789979159434,
+                                    "text": "B4 圆周旅记 通过AI将攻略转换为初步的结构化地图和攻略"
+                                },
+                                "children": [
+                                    {
+                                        "data": {
+                                            "id": "dlkuop86jt40",
+                                            "created": 1789979245275,
+                                            "text": "痛点：方案一次成型、深度低、信息来源单一"
+                                        },
+                                        "children": []
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "data": {
+                    "id": "dlkupzvvnqw0",
+                    "created": 1789979346840,
+                    "text": "2. 用户画像",
+                    "layout_mind_offset": {
+                        "x": 191.24999715015292,
+                        "y": 9.999999850988274
+                    }
+                },
+                "children": [
+                    {
+                        "data": {
+                            "id": "dlkuq7bwsnc0",
+                            "created": 1789979363047,
+                            "text": "A "
+                        },
+                        "children": []
+                    }
+                ]
+            },
+            {
+                "data": {
+                    "id": "dlkuqgt69xk0",
+                    "created": 1789979383682,
+                    "text": "3. 构想（RAW IDEA）",
+                    "layout_mind_offset": {
+                        "x": 878.7499869056049,
+                        "y": 362.49999459832907
+                    },
+                    "note": "总述：我希望做一款像 Tom Riddle 的日记本一样的旅行规划Copilot产品，用户可以进行任何他们认为必要的输入（攻略文字、机酒信息、个人需求、预算等），AI会转化为结构化的旅行规划任务、地图和旅行准备任务（准备任务比如预约景点、订酒店、带东西、订机票火车票、订餐厅、线上排队，查信息等），我不祈求这个Copilot能够一站式地解决所有旅行规划和准备的动作，但是我要求它能够为用户生成一套结构化的、带有实效性的旅行解决方案，用户交互后就能明白我想去哪儿玩、怎么玩、我该怎么选酒店（片区+预算）、玩之前该准备什么，在旅行前用户可以根据checkbox list一项一项去准备，只要做完了就大概率能收获一段顺利的旅程"
+                },
+                "children": []
+            }
+        ]
+    },
+    "template": "default",
+    "theme": "fresh-green",
+    "version": "1.4.43"
+}

@@ -1,0 +1,952 @@
+{
+  "suggestion": {
+    "keywords": [],
+    "cities": []
+  },
+  "count": "113",
+  "infocode": "10000",
+  "pois": [
+    {
+      "parent": "B0LDNU37SC",
+      "distance": [],
+      "keytag": "商场",
+      "importance": [],
+      "biz_ext": {
+        "cost": [],
+        "opentime2": "周一至周日 10:00-22:00",
+        "rating": "4.7",
+        "open_time": "10:00-22:00"
+      },
+      "type": "购物服务;商场;购物中心",
+      "photos": [
+        {
+          "title": [],
+          "url": "https://aos-comment.amap.com/B0LG7ZMH4E/comment/B888516F_8CC3_4877_8B24_D22F447A78D6_L0_001_1500_200_1770174696977_45112099.jpg"
+        },
+        {
+          "title": [],
+          "url": "https://aos-comment.amap.com/B0LG7ZMH4E/comment/FA218544_2910_4A95_81AA_063A07489E16_L0_001_1500_200_1766672920277_34754646.jpg"
+        },
+        {
+          "title": [],
+          "url": "https://aos-comment.amap.com/B0LG7ZMH4E/comment/content_media_external_file_41367_ss__1769129337864_19882998.jpg"
+        }
+      ],
+      "building": [],
+      "typecode": "060101",
+      "shopinfo": "0",
+      "poiweight": [],
+      "adname": "海淀区",
+      "featured_reviews_remake": [],
+      "tel": "010-62575811",
+      "id": "B0LG7ZMH4E",
+      "address": "中关村大街19号(海淀黄庄地铁站A2西北口步行280米)",
+      "space_num": [],
+      "pname": "北京市",
+      "biz_type": [],
+      "cityname": "北京市",
+      "childtype": "602",
+      "atag": [],
+      "name": "中关村大融城(东区)",
+      "location": "116.314985,39.980177",
+      "shopid": [],
+      "favorite_num": [],
+      "featured_reviews": []
+    },
+    {
+      "parent": "B0LDNU37SC",
+      "distance": [],
+      "keytag": "商场",
+      "importance": [],
+      "biz_ext": {
+        "cost": [],
+        "opentime2": "周一至周日 10:00-22:00",
+        "rating": "4.8",
+        "open_time": "10:00-22:00"
+      },
+      "type": "购物服务;商场;商场",
+      "photos": [
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/3613f0aea2eaaa470000002360636101?type=pic"
+        },
+        {
+          "title": [],
+          "url": "https://aos-comment.amap.com/B0LG7ZYJ3S/comment/20260324-de0095bbcdf97b1a5bb63471-5kvBItfsozeAiawoUmknej.jpg"
+        },
+        {
+          "title": [],
+          "url": "https://aos-comment.amap.com/B0LG7ZYJ3S/comment/A3D5CD42_2A62_4ABA_88B7_92E6B374563A_L0_001_1500_200_1770382885354_35311799.jpg"
+        }
+      ],
+      "building": [],
+      "typecode": "060100",
+      "shopinfo": "0",
+      "poiweight": [],
+      "adname": "海淀区",
+      "featured_reviews_remake": [],
+      "tel": "010-62575811",
+      "id": "B0LG7ZYJ3S",
+      "address": "中关村大街15-11号(中关村地铁站D西南口步行430米)",
+      "space_num": [],
+      "pname": "北京市",
+      "biz_type": [],
+      "cityname": "北京市",
+      "childtype": "602",
+      "atag": [],
+      "name": "中关村大融城(西区)",
+      "location": "116.312173,39.981533",
+      "shopid": [],
+      "favorite_num": [],
+      "featured_reviews": []
+    },
+    {
+      "parent": [],
+      "distance": [],
+      "keytag": "商场",
+      "importance": [],
+      "biz_ext": {
+        "cost": [],
+        "opentime2": "周一至周日 10:00-22:00",
+        "rating": "4.8",
+        "open_time": "10:00-22:00"
+      },
+      "type": "购物服务;商场;购物中心",
+      "photos": [
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/ec8322bbb15029030000003144412983?type=pic"
+        },
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/eb40973c615e1b550000002361922814?type=pic"
+        },
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/98ce3e8aa9a8ea9b0000001877944614?type=pic"
+        }
+      ],
+      "building": [],
+      "typecode": "060101",
+      "shopinfo": "0",
+      "poiweight": [],
+      "adname": "海淀区",
+      "featured_reviews_remake": [],
+      "tel": "010-62575811",
+      "id": "B0LDNU37SC",
+      "address": "中关村大街15-9号(中关村地铁站D西南口步行450米)",
+      "space_num": [],
+      "pname": "北京市",
+      "biz_type": [],
+      "cityname": "北京市",
+      "childtype": [],
+      "atag": [],
+      "name": "中关村ARTPARK大融城",
+      "location": "116.313675,39.980809",
+      "shopid": [],
+      "favorite_num": [],
+      "featured_reviews": []
+    },
+    {
+      "parent": "B0LDNU37SC",
+      "distance": [],
+      "keytag": "地下停车场",
+      "importance": [],
+      "biz_ext": {
+        "cost": [],
+        "opentime2": "周一至周日 00:00-24:00",
+        "rating": [],
+        "open_time": "24小时营业"
+      },
+      "type": "交通设施服务;停车场;公共停车场",
+      "parking_type": "地下",
+      "photos": [
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/f3d9892de7505e5f69bc4f6737f57f24"
+        },
+        {
+          "title": [],
+          "url": "https://aos-comment.amap.com/B000A87EO7/comment/177000114642_1770001228551_14259852.jpg"
+        },
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/7c19f42b8ddb3d86f6a501b9be5991c4"
+        }
+      ],
+      "building": [],
+      "typecode": "150904",
+      "shopinfo": "2",
+      "poiweight": [],
+      "adname": "海淀区",
+      "featured_reviews_remake": [],
+      "tel": [],
+      "id": "B000A87EO7",
+      "address": "中关村大街15号",
+      "space_num": [],
+      "pname": "北京市",
+      "biz_type": [],
+      "cityname": "北京市",
+      "childtype": "305",
+      "atag": [],
+      "name": "中关村大融城地下停车场",
+      "location": "116.310691,39.981179",
+      "shopid": [],
+      "favorite_num": [],
+      "featured_reviews": []
+    },
+    {
+      "parent": [],
+      "distance": [],
+      "keytag": "售楼处",
+      "importance": [],
+      "biz_ext": {
+        "cost": [],
+        "opentime2": "周一至周日 09:00-22:00",
+        "rating": "4.7",
+        "open_time": "09:00-22:00"
+      },
+      "type": "生活服务;生活服务场所;生活服务场所",
+      "photos": [
+        {
+          "title": [],
+          "url": "https://aos-comment.amap.com/B0JGTZPA1I/comment/%5B2025-05-07-21-20-26%5DD4D2D278-181C-4FF6-997A-8E98C02C7E6_1746624027989_45146656.jpg"
+        },
+        {
+          "title": [],
+          "url": "https://aos-comment.amap.com/B0JGTZPA1I/comment/%5B2025-05-07-21-20-42%5D7136086D-38F9-4150-9508-8B0551B78A9_1746624043416_36579446.jpg"
+        },
+        {
+          "title": [],
+          "url": "https://aos-comment.amap.com/B0JGTZPA1I/comment/content_media_external_images_media_88481_ss__1750237653983_23952702.jpg"
+        }
+      ],
+      "building": [],
+      "typecode": "070000",
+      "shopinfo": "0",
+      "poiweight": [],
+      "adname": "海淀区",
+      "featured_reviews_remake": [],
+      "tel": "18612308935",
+      "id": "B0JGTZPA1I",
+      "address": "海淀大街87号(中关村地铁站D西南口步行200米)",
+      "space_num": [],
+      "pname": "北京市",
+      "biz_type": [],
+      "cityname": "北京市",
+      "childtype": [],
+      "atag": [],
+      "name": "北京中关村ARTPARK大融城·招商中心",
+      "location": "116.315254,39.982039",
+      "shopid": [],
+      "favorite_num": [],
+      "featured_reviews": []
+    },
+    {
+      "parent": "B0LG7ZMH4E",
+      "distance": [],
+      "keytag": "手机销售",
+      "importance": [],
+      "biz_ext": {
+        "cost": [],
+        "opentime2": "周一至周日 10:00-22:00",
+        "rating": "4.4",
+        "open_time": "10:00-22:00"
+      },
+      "type": "购物服务;家电电子卖场;手机销售",
+      "photos": [
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/cc21bec9807e62980000003300384516?type=pic"
+        },
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/4208ce78e66983090000003087670561?type=pic"
+        },
+        {
+          "title": [],
+          "url": "https://aos-comment.amap.com/B0LKF7UPLP/comment/content_media_external_file_100004572_1769772544351_37480446.jpg"
+        }
+      ],
+      "building": [],
+      "typecode": "060305",
+      "shopinfo": "0",
+      "poiweight": [],
+      "adname": "海淀区",
+      "featured_reviews_remake": [],
+      "tel": "15611188487",
+      "id": "B0LKF7UPLP",
+      "address": "中关村大街15号中关村大融城东区1层、B1层L1-01、L1-02、LG1-01、LG1-02号商铺",
+      "space_num": [],
+      "pname": "北京市",
+      "biz_type": [],
+      "cityname": "北京市",
+      "childtype": "202",
+      "atag": [],
+      "name": "华为智能生活馆•北京中关村大融城",
+      "location": "116.314722,39.980446",
+      "shopid": [],
+      "favorite_num": [],
+      "featured_reviews": []
+    },
+    {
+      "parent": "B0LG7ZMH4E",
+      "distance": [],
+      "keytag": "摄影摄像机",
+      "importance": [],
+      "biz_ext": {
+        "cost": [],
+        "opentime2": "周一至周日 10:00-22:00",
+        "rating": "4.4",
+        "open_time": "10:00-22:00"
+      },
+      "type": "购物服务;购物相关场所;购物相关场所",
+      "photos": [
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/fbc028414c1218a20000003182414691?type=pic"
+        },
+        {
+          "title": [],
+          "url": "https://aos-comment.amap.com/B0K12LDKBP/comment/2025-11-24-11-21-30%2B98D88AA1-45DF-47F8-B1D6-50BDA0E76A5_1763954530820_44719078.jpg"
+        },
+        {
+          "title": [],
+          "url": "https://aos-comment.amap.com/comment/content_service__1769355153170_48418492_1769355180617_65438529.jpg"
+        }
+      ],
+      "building": [],
+      "typecode": "060000",
+      "shopinfo": "0",
+      "poiweight": [],
+      "adname": "海淀区",
+      "featured_reviews_remake": [],
+      "tel": "16622960365",
+      "id": "B0K12LDKBP",
+      "address": "海淀街道中关村大街15号中关村大融城东区LG1-42",
+      "space_num": [],
+      "pname": "北京市",
+      "biz_type": [],
+      "cityname": "北京市",
+      "childtype": "202",
+      "atag": [],
+      "name": "影石Insta360中关村大融城",
+      "location": "116.315384,39.979555",
+      "shopid": [],
+      "favorite_num": [],
+      "featured_reviews": []
+    },
+    {
+      "parent": [],
+      "distance": [],
+      "keytag": "广场",
+      "importance": [],
+      "biz_ext": {
+        "cost": [],
+        "opentime2": "周一至周日 00:00-24:00",
+        "level": [],
+        "rating": "3.9",
+        "open_time": "24小时营业",
+        "ticket_ordering": "0"
+      },
+      "type": "风景名胜;风景名胜;风景名胜|购物服务;购物相关场所;购物相关场所",
+      "photos": [
+        {
+          "provider": [],
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/c8cbae536120d7d7906040a816a2d3bf"
+        },
+        {
+          "provider": [],
+          "title": [],
+          "url": "https://aos-comment.amap.com/B0LD1UI97O/comment/176536683918_1765366840881_07945484.jpg"
+        },
+        {
+          "provider": [],
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/77a935ed8b3143c30000002667232580?type=pic"
+        }
+      ],
+      "building": [],
+      "typecode": "110200|060000",
+      "shopinfo": "2",
+      "poiweight": [],
+      "adname": "海淀区",
+      "featured_reviews_remake": [],
+      "tel": [],
+      "id": "B0LRSH4NTZ",
+      "address": "海淀中街与海淀大街交叉口东南100米",
+      "space_num": [],
+      "pname": "北京市",
+      "biz_type": "tour",
+      "cityname": "北京市",
+      "childtype": [],
+      "atag": [],
+      "name": "中关村大融城下沉广场",
+      "location": "116.311850,39.981832",
+      "shopid": [],
+      "favorite_num": [],
+      "featured_reviews": []
+    },
+    {
+      "parent": "B0LG7ZMH4E",
+      "distance": [],
+      "keytag": "数码",
+      "importance": [],
+      "biz_ext": {
+        "cost": [],
+        "opentime2": "周一至周日 10:00-22:00",
+        "rating": "4.6",
+        "open_time": "10:00-22:00"
+      },
+      "type": "购物服务;家电电子卖场;数码电子",
+      "photos": [
+        {
+          "title": [],
+          "url": "https://aos-comment.amap.com/B0K6DH9NQU/comment/C66A5051_2641_4358_9543_451978A11BFA_L0_001_1440_108_1766659036655_82135143.jpg"
+        },
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/1e21f20d7675b7260000002259432907?type=pic"
+        },
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/5a4d89367ddb81300000002252536133?type=pic"
+        }
+      ],
+      "building": [],
+      "typecode": "060306",
+      "shopinfo": "0",
+      "poiweight": [],
+      "adname": "海淀区",
+      "featured_reviews_remake": [],
+      "tel": [],
+      "id": "B0K6DH9NQU",
+      "address": "中关村大街15-9号1层101",
+      "space_num": [],
+      "pname": "北京市",
+      "biz_type": [],
+      "cityname": "北京市",
+      "childtype": "202",
+      "atag": [],
+      "name": "DJI大疆(北京中关村大融城授权体验店)",
+      "location": "116.314360,39.979868",
+      "shopid": [],
+      "favorite_num": [],
+      "featured_reviews": []
+    },
+    {
+      "parent": "B0LG7ZMH4E",
+      "distance": [],
+      "keytag": "购物服务,服装鞋帽皮具店,品牌服装店",
+      "importance": [],
+      "biz_ext": {
+        "cost": [],
+        "opentime2": "周一至周日 10:00-22:00",
+        "rating": "3.8",
+        "open_time": "10:00-22:00"
+      },
+      "type": "购物服务;服装鞋帽皮具店;品牌服装店",
+      "photos": [
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/0e7fcc02960d60030000004933164792?type=pic"
+        },
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/49881248efae02d40000002652066234?type=pic"
+        },
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/221dc1667206668a0000002651954780?type=pic"
+        }
+      ],
+      "building": [],
+      "typecode": "061101",
+      "shopinfo": "0",
+      "poiweight": [],
+      "adname": "海淀区",
+      "featured_reviews_remake": [],
+      "tel": [],
+      "id": "B0MGPU115N",
+      "address": "中关村大街19号中关村大融城东区B2层",
+      "space_num": [],
+      "pname": "北京市",
+      "biz_type": [],
+      "cityname": "北京市",
+      "childtype": "202",
+      "atag": [],
+      "name": "VEROMODA北京中关村大融城店",
+      "location": "116.315375,39.979475",
+      "shopid": [],
+      "favorite_num": [],
+      "featured_reviews": []
+    },
+    {
+      "parent": "B000A87EO7",
+      "distance": [],
+      "keytag": "交通设施服务,停车场,停车场出入口",
+      "importance": [],
+      "biz_ext": {
+        "cost": [],
+        "opentime2": [],
+        "rating": [],
+        "open_time": []
+      },
+      "type": "交通设施服务;停车场;停车场出入口",
+      "parking_type": "地下",
+      "photos": [
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/1ada8040470c4c5c9348f3c0cafdaf8f"
+        },
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/e431e1dcb92d6ae9bf8cb40bf91ab309"
+        }
+      ],
+      "building": [],
+      "typecode": "150909",
+      "shopinfo": "2",
+      "poiweight": [],
+      "adname": "海淀区",
+      "featured_reviews_remake": [],
+      "tel": [],
+      "id": "B0H3HU02WJ",
+      "address": "中关村大街15号中关村大融城地下停车场",
+      "space_num": [],
+      "pname": "北京市",
+      "biz_type": [],
+      "cityname": "北京市",
+      "childtype": "108",
+      "atag": [],
+      "name": "中关村大融城西区地下停车场(东出入口)",
+      "location": "116.310666,39.981098",
+      "shopid": [],
+      "favorite_num": [],
+      "featured_reviews": []
+    },
+    {
+      "parent": "B0LG7ZMH4E",
+      "distance": [],
+      "keytag": "金店",
+      "importance": [],
+      "biz_ext": {
+        "cost": [],
+        "opentime2": "周一至周日 10:00-22:00 2026-05-01至2026-05-05 周一至周日 10:00-22:00",
+        "rating": "4.0",
+        "open_time": "10:00-22:00 10:00-22:00"
+      },
+      "type": "购物服务;专卖店;珠宝首饰工艺品",
+      "photos": [
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/4d25fcf022eb449c2aa5332c2af38d14"
+        },
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/6363037971a914774b3ab957da7c75d0"
+        },
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/34fcbe461fdeb44e0000004932088040?type=pic"
+        }
+      ],
+      "building": [],
+      "typecode": "061202",
+      "shopinfo": "0",
+      "poiweight": [],
+      "adname": "海淀区",
+      "featured_reviews_remake": [],
+      "tel": "15910314080",
+      "id": "B0MAMU5YUX",
+      "address": "中关村大街15-9号-1层101-09号",
+      "space_num": [],
+      "pname": "北京市",
+      "biz_type": [],
+      "cityname": "北京市",
+      "childtype": "202",
+      "atag": [],
+      "name": "周大福大融城店",
+      "location": "116.314298,39.980083",
+      "shopid": [],
+      "favorite_num": [],
+      "featured_reviews": []
+    },
+    {
+      "parent": "B0LG7ZMH4E",
+      "distance": [],
+      "keytag": "玩具店",
+      "importance": [],
+      "biz_ext": {
+        "cost": [],
+        "opentime2": "周一至周日 10:00-22:00",
+        "rating": "4.4",
+        "open_time": "10:00-22:00"
+      },
+      "type": "购物服务;服装鞋帽皮具店;服装鞋帽皮具店",
+      "photos": [
+        {
+          "title": [],
+          "url": "https://aos-comment.amap.com/B0LKS7J8EA/comment/content_media_external_file_49314_ss__1766632466616_43382509.jpg"
+        },
+        {
+          "title": [],
+          "url": "https://aos-comment.amap.com/B0LKS7J8EA/comment/content_media_external_file_49317_ss__1766632466654_69709383.jpg"
+        },
+        {
+          "title": [],
+          "url": "https://aos-comment.amap.com/B0LKS7J8EA/comment/content_media_external_file_196780_ss__1766746366825_83174064.jpg"
+        }
+      ],
+      "building": [],
+      "typecode": "061100",
+      "shopinfo": "0",
+      "poiweight": [],
+      "adname": "海淀区",
+      "featured_reviews_remake": [],
+      "tel": "15652071311",
+      "id": "B0LKS7J8EA",
+      "address": "北京城区大融城东区地下二层",
+      "space_num": [],
+      "pname": "北京市",
+      "biz_type": [],
+      "cityname": "北京市",
+      "childtype": "202",
+      "atag": [],
+      "name": "TOP TOY北京中关村大融城店",
+      "location": "116.313672,39.980310",
+      "shopid": [],
+      "favorite_num": [],
+      "featured_reviews": []
+    },
+    {
+      "parent": "B000A85J2J",
+      "distance": [],
+      "keytag": "购物服务,体育用品店,体育用品店",
+      "importance": [],
+      "biz_ext": {
+        "cost": [],
+        "opentime2": "周一至周日 10:00-22:00",
+        "rating": "3.9",
+        "open_time": "10:00-22:00"
+      },
+      "type": "购物服务;体育用品店;体育用品店",
+      "photos": [
+        {
+          "title": [],
+          "url": "https://aos-comment.amap.com/comment/content_service__1769073949418_95439835_1769073951198_55932277.jpg"
+        },
+        {
+          "title": [],
+          "url": "https://aos-comment.amap.com/comment/content_service__1769073949422_57483368_1769073951199_86196792.jpg"
+        },
+        {
+          "title": [],
+          "url": "https://aos-comment.amap.com/B0LK34XUKO/comment/B72764C5_F9C3_4972_B70F_2479CBD49F25_L0_001_1500_200_1769073870250_16607456.jpg"
+        }
+      ],
+      "building": [],
+      "typecode": "060900",
+      "shopinfo": "0",
+      "poiweight": [],
+      "adname": "海淀区",
+      "featured_reviews_remake": [],
+      "tel": [],
+      "id": "B0LK34XUKO",
+      "address": "丹棱街甲1号北京中关村领展广场B1层",
+      "space_num": [],
+      "pname": "北京市",
+      "biz_type": [],
+      "cityname": "北京市",
+      "childtype": "202",
+      "atag": [],
+      "name": "安踏冠军(中关村大融城店)",
+      "location": "116.314825,39.980375",
+      "shopid": [],
+      "favorite_num": [],
+      "featured_reviews": []
+    },
+    {
+      "parent": "B0LG7ZMH4E",
+      "distance": [],
+      "keytag": "礼品店",
+      "importance": [],
+      "biz_ext": {
+        "cost": [],
+        "opentime2": "周一至周日 10:00-22:00",
+        "rating": "4.2",
+        "open_time": "10:00-22:00"
+      },
+      "type": "购物服务;购物相关场所;购物相关场所",
+      "photos": [
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/f8e645201a33f3c2ec86ed973499693d"
+        },
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/c21c18c148cbed5450f86ea8e92fccd4"
+        },
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/c9db3ec055d3354f0000003402500247?type=pic"
+        }
+      ],
+      "building": [],
+      "typecode": "060000",
+      "shopinfo": "0",
+      "poiweight": [],
+      "adname": "海淀区",
+      "featured_reviews_remake": [],
+      "tel": "13811137818",
+      "id": "B0LKLD8VHV",
+      "address": "中关村大街19号中关村大融城东区地下一层LG1-D44",
+      "space_num": [],
+      "pname": "北京市",
+      "biz_type": [],
+      "cityname": "北京市",
+      "childtype": "202",
+      "atag": [],
+      "name": "朱炳仁·铜-中关村大融城体验店",
+      "location": "116.314925,39.979825",
+      "shopid": [],
+      "favorite_num": [],
+      "featured_reviews": []
+    },
+    {
+      "parent": "B0LG7ZMH4E",
+      "distance": [],
+      "keytag": "购物服务,购物相关场所,购物相关场所",
+      "importance": [],
+      "biz_ext": {
+        "cost": [],
+        "opentime2": "周一至周日 10:00-22:00",
+        "rating": "3.4",
+        "open_time": "10:00-22:00"
+      },
+      "type": "购物服务;购物相关场所;购物相关场所",
+      "photos": [
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/56c8f36c5fa13e4772693f41e594450a"
+        },
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/36b0c016c62379550000003914192457?type=pic"
+        },
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/d82a96e57abfe32c0000002920072951?type=pic"
+        }
+      ],
+      "building": [],
+      "typecode": "060000",
+      "shopinfo": "0",
+      "poiweight": [],
+      "adname": "海淀区",
+      "featured_reviews_remake": [],
+      "tel": [],
+      "id": "B0LK370GKL",
+      "address": "中关村大街大融城东区B2层",
+      "space_num": [],
+      "pname": "北京市",
+      "biz_type": [],
+      "cityname": "北京市",
+      "childtype": "202",
+      "atag": [],
+      "name": "Yoyoalways大融城店",
+      "location": "116.314102,39.980235",
+      "shopid": [],
+      "favorite_num": [],
+      "featured_reviews": []
+    },
+    {
+      "parent": [],
+      "distance": [],
+      "keytag": "小商品",
+      "importance": [],
+      "biz_ext": {
+        "cost": [],
+        "opentime2": "周一至周日 10:00-22:00",
+        "rating": "3.5",
+        "open_time": "10:00-22:00"
+      },
+      "type": "购物服务;购物相关场所;购物相关场所",
+      "photos": [
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/a48d348fa879c5230000003661350206?type=pic"
+        },
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/91a61e202183a1740000003661336676?type=pic"
+        },
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/baf73057d18281480000003661324879?type=pic"
+        }
+      ],
+      "building": [],
+      "typecode": "060000",
+      "shopinfo": "0",
+      "poiweight": [],
+      "adname": "海淀区",
+      "featured_reviews_remake": [],
+      "tel": "18518887109",
+      "id": "B0MA9LAVPH",
+      "address": "北京城区中关村大融城LG2-53B-3DJP拼图",
+      "space_num": [],
+      "pname": "北京市",
+      "biz_type": [],
+      "cityname": "北京市",
+      "childtype": [],
+      "atag": [],
+      "name": "大融城3djp拼图",
+      "location": "116.314879,39.979749",
+      "shopid": [],
+      "favorite_num": [],
+      "featured_reviews": []
+    },
+    {
+      "parent": [],
+      "distance": [],
+      "keytag": "珠宝首饰",
+      "importance": [],
+      "biz_ext": {
+        "cost": [],
+        "opentime2": "周一至周日 09:00-21:00",
+        "rating": "3.4",
+        "open_time": "09:00-21:00"
+      },
+      "type": "购物服务;服装鞋帽皮具店;服装鞋帽皮具店",
+      "photos": [
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/6d5b5b9705d4f8a80000002469288804"
+        },
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/1ee5277a62f46a560000002462336426"
+        },
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/415c325dee4fb0490000002462310791"
+        }
+      ],
+      "building": [],
+      "typecode": "061100",
+      "shopinfo": "0",
+      "poiweight": [],
+      "adname": "海淀区",
+      "featured_reviews_remake": [],
+      "tel": [],
+      "id": "B0MDUZZOSX",
+      "address": "中关村大街19号大融城东区LG2层D63",
+      "space_num": [],
+      "pname": "北京市",
+      "biz_type": [],
+      "cityname": "北京市",
+      "childtype": [],
+      "atag": [],
+      "name": "La terre中关村大融城店",
+      "location": "116.314325,39.980325",
+      "shopid": [],
+      "favorite_num": [],
+      "featured_reviews": []
+    },
+    {
+      "parent": [],
+      "distance": [],
+      "keytag": "服饰鞋包",
+      "importance": [],
+      "biz_ext": {
+        "cost": [],
+        "opentime2": [],
+        "rating": "3.6",
+        "open_time": []
+      },
+      "type": "购物服务;服装鞋帽皮具店;服装鞋帽皮具店",
+      "photos": [
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/4cd34204637d46820000000963238114?type=pic"
+        },
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/345675b91081027c0000000963170889?type=pic"
+        }
+      ],
+      "building": [],
+      "typecode": "061100",
+      "shopinfo": "0",
+      "poiweight": [],
+      "adname": "海淀区",
+      "featured_reviews_remake": [],
+      "tel": [],
+      "id": "B0M69S9MLR",
+      "address": "海淀中街与海淀大街交叉口东南120米",
+      "space_num": [],
+      "pname": "北京市",
+      "biz_type": [],
+      "cityname": "北京市",
+      "childtype": [],
+      "atag": [],
+      "name": "MOISSAC中关村大融城店",
+      "location": "116.311890,39.981609",
+      "shopid": [],
+      "favorite_num": [],
+      "featured_reviews": []
+    },
+    {
+      "parent": [],
+      "distance": [],
+      "keytag": "超市",
+      "importance": [],
+      "biz_ext": {
+        "cost": [],
+        "opentime2": "周一至周日 10:00-22:00",
+        "rating": "4.6",
+        "open_time": "10:00-22:00",
+        "meal_ordering": "0"
+      },
+      "type": "餐饮服务;餐饮相关场所;餐饮相关",
+      "photos": [
+        {
+          "title": [],
+          "url": "https://aos-comment.amap.com/B0LU9M1GZ3/comment/content_media_external_file_1000015444_ss__1757783135362_90264618.jpg"
+        },
+        {
+          "title": [],
+          "url": "https://aos-comment.amap.com/B0LU9M1GZ3/comment/content_media_external_file_1000015458_ss__1757783135233_84003695.jpg"
+        },
+        {
+          "title": [],
+          "url": "https://store.is.autonavi.com/showpic/6c0afe74d7ddcfa60000002748880277?type=pic"
+        }
+      ],
+      "building": [],
+      "typecode": "050000",
+      "shopinfo": "0",
+      "poiweight": [],
+      "adname": "海淀区",
+      "featured_reviews_remake": [],
+      "tel": "010-62577565",
+      "id": "B0LU9M1GZ3",
+      "address": "北京城区海淀中街与海淀大街交叉口",
+      "space_num": [],
+      "pname": "北京市",
+      "biz_type": "diner",
+      "cityname": "北京市",
+      "childtype": [],
+      "atag": [],
+      "name": "Ole精品超市北京大融城店",
+      "location": "116.311645,39.981902",
+      "shopid": [],
+      "favorite_num": [],
+      "featured_reviews": []
+    }
+  ],
+  "status": "1",
+  "info": "OK"
+}

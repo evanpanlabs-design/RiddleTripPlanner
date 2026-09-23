@@ -1,0 +1,279 @@
+{
+  "status": "1",
+  "info": "OK",
+  "infocode": "10000",
+  "route": {
+    "origin": "116.322033,39.894912",
+    "destination": "104.140947,30.628779",
+    "distance": "2136307",
+    "cost": {},
+    "transits": [
+      {
+        "cost": {
+          "duration": "47220",
+          "transit_fee": "601.000000"
+        },
+        "distance": "1711541",
+        "walking_distance": "",
+        "nightflag": "",
+        "segments": [
+          {
+            "walking": {
+              "destination": "116.321220,39.894711",
+              "distance": "30",
+              "origin": "116.321442,39.894806",
+              "cost": {
+                "duration": "45"
+              },
+              "steps": [
+                {
+                  "instruction": "步行1米直行",
+                  "road": "",
+                  "distance": "1"
+                },
+                {
+                  "instruction": "步行1米到达目的地",
+                  "road": "",
+                  "distance": "1"
+                },
+                {
+                  "instruction": "步行29米到达北京西站",
+                  "road": "",
+                  "distance": "29"
+                }
+              ]
+            },
+            "bus": {
+              "buslines": [
+                {
+                  "departure_stop": {
+                    "name": "北京西站",
+                    "id": "110100023117006",
+                    "location": "116.321218,39.894706",
+                    "entrance": {
+                      "name": "东入口",
+                      "location": "116.321432,39.894806"
+                    }
+                  },
+                  "arrival_stop": {
+                    "name": "六里桥",
+                    "id": "110100023117008",
+                    "location": "116.302808,39.880239"
+                  },
+                  "name": "地铁9号线(国家图书馆--郭公庄)",
+                  "id": "110100023117",
+                  "type": "地铁线路",
+                  "distance": "2450",
+                  "cost": {
+                    "duration": "420"
+                  },
+                  "bus_time_tips": "",
+                  "bustimetag": "0",
+                  "start_time": "",
+                  "station_start_time": "0549",
+                  "end_time": "",
+                  "station_end_time": "2329",
+                  "via_num": "1",
+                  "via_stops": [
+                    {
+                      "name": "六里桥东",
+                      "id": "110100023117007",
+                      "location": "116.315024,39.887125"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "walking": {
+              "destination": "116.302811,39.880238",
+              "distance": "52",
+              "origin": "116.302811,39.880238",
+              "cost": {
+                "duration": "224"
+              },
+              "steps": [
+                {
+                  "instruction": "步行1米到达六里桥",
+                  "road": "",
+                  "distance": "1"
+                }
+              ]
+            },
+            "bus": {
+              "buslines": [
+                {
+                  "departure_stop": {
+                    "name": "六里桥",
+                    "id": "110100023283007",
+                    "location": "116.302808,39.880239"
+                  },
+                  "arrival_stop": {
+                    "name": "丰台站",
+                    "id": "110100023283010",
+                    "location": "116.304501,39.850249",
+                    "exit": {
+                      "name": "西2口",
+                      "location": "116.303089,39.850670"
+                    }
+                  },
+                  "name": "地铁10号线外环(车道沟--车道沟)",
+                  "id": "110100023283",
+                  "type": "地铁线路",
+                  "distance": "3360",
+                  "cost": {
+                    "duration": "570"
+                  },
+                  "bus_time_tips": "",
+                  "bustimetag": "0",
+                  "start_time": "",
+                  "station_start_time": "0509",
+                  "end_time": "",
+                  "station_end_time": "2254",
+                  "via_num": "2",
+                  "via_stops": [
+                    {
+                      "name": "西局",
+                      "id": "110100023283008",
+                      "location": "116.303817,39.865877"
+                    },
+                    {
+                      "name": "泥洼",
+                      "id": "110100023283009",
+                      "location": "116.304173,39.858609"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "walking": {
+              "destination": "116.303085,39.850670",
+              "distance": "230",
+              "origin": "116.304497,39.850246",
+              "cost": {
+                "duration": "401"
+              },
+              "steps": [
+                {
+                  "instruction": "步行230米左转",
+                  "road": "",
+                  "distance": "230"
+                },
+                {
+                  "instruction": "步行1米到达目的地",
+                  "road": "",
+                  "distance": "1"
+                }
+              ]
+            }
+          },
+          {
+            "railway": {
+              "id": "101013330216",
+              "time": "43500",
+              "name": "D967(北京丰台-贵阳北)",
+              "trip": "D967",
+              "distance": "1705194",
+              "type": "D字头的动车火车",
+              "departure_stop": {
+                "id": "B0H6XMWL0S",
+                "name": "北京丰台",
+                "location": "116.301463 39.850889",
+                "adcode": "110106",
+                "time": "2041",
+                "start": "1"
+              },
+              "arrival_stop": {
+                "id": "B001C80DL2",
+                "name": "成都东",
+                "location": "104.140947 30.628779",
+                "adcode": "510108",
+                "time": "0846",
+                "end": "0"
+              },
+              "spaces": [
+                {
+                  "code": "火车动卧下铺",
+                  "cost": "1030.0"
+                },
+                {
+                  "code": "火车无座",
+                  "cost": "598.0"
+                },
+                {
+                  "code": "高级动卧上",
+                  "cost": "2017.0"
+                },
+                {
+                  "code": "火车二等座",
+                  "cost": "598.0"
+                }
+              ]
+            }
+          },
+          {}
+        ]
+      },
+      {
+        "cost": {
+          "duration": "35820",
+          "transit_fee": "762.000000"
+        },
+        "distance": "1792481",
+        "walking_distance": "",
+        "nightflag": "",
+        "segments": [
+          {
+            "railway": {
+              "id": "101019267702",
+              "time": "33780",
+              "name": "G4183(北京西-内江北)",
+              "trip": "G4183",
+              "distance": "1792255",
+              "type": "G字头的高铁火车",
+              "departure_stop": {
+                "id": "B000A83M61",
+                "name": "北京西",
+                "location": "116.322033 39.894912",
+                "adcode": "110106",
+                "time": "2040",
+                "start": "1"
+              },
+              "arrival_stop": {
+                "id": "B001C80DL2",
+                "name": "成都东",
+                "location": "104.140947 30.628779",
+                "adcode": "510108",
+                "time": "0603",
+                "end": "0"
+              },
+              "spaces": [
+                {
+                  "code": "火车一等座",
+                  "cost": "1220.0"
+                },
+                {
+                  "code": "火车无座",
+                  "cost": "762.0"
+                },
+                {
+                  "code": "火车商务座",
+                  "cost": "2450.0"
+                },
+                {
+                  "code": "火车二等座",
+                  "cost": "762.0"
+                }
+              ]
+            }
+          },
+          {}
+        ]
+      }
+    ]
+  },
+  "count": "2"
+}

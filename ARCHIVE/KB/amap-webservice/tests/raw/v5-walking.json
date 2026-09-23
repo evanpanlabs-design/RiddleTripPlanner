@@ -1,0 +1,128 @@
+{
+  "status": "1",
+  "info": "OK",
+  "infocode": "10000",
+  "count": "1",
+  "route": {
+    "origin": "116.310918,39.992873",
+    "destination": "116.314985,39.980177",
+    "paths": [
+      {
+        "distance": "1993",
+        "cost": {
+          "duration": "1594"
+        },
+        "steps": [
+          {
+            "instruction": "向南步行34米左转",
+            "orientation": "南",
+            "road_name": "",
+            "step_distance": "34",
+            "cost": {
+              "duration": "27"
+            }
+          },
+          {
+            "instruction": "沿求知路向东南步行36米右转",
+            "orientation": "东南",
+            "road_name": "求知路",
+            "step_distance": "36",
+            "cost": {
+              "duration": "29"
+            }
+          },
+          {
+            "instruction": "沿五四路向南步行651米左转",
+            "orientation": "南",
+            "road_name": "五四路",
+            "step_distance": "651",
+            "cost": {
+              "duration": "521"
+            }
+          },
+          {
+            "instruction": "沿海淀路向东步行382米右转",
+            "orientation": "东",
+            "road_name": "海淀路",
+            "step_distance": "382",
+            "cost": {
+              "duration": "306"
+            }
+          },
+          {
+            "instruction": "沿中关村北大街向南步行51米右转",
+            "orientation": "南",
+            "road_name": "中关村北大街",
+            "step_distance": "51",
+            "cost": {
+              "duration": "41"
+            }
+          },
+          {
+            "instruction": "向南步行200米右转",
+            "orientation": "南",
+            "road_name": "",
+            "step_distance": "200",
+            "cost": {
+              "duration": "160"
+            }
+          },
+          {
+            "instruction": "沿中关村大街向南步行74米向右前方行走",
+            "orientation": "南",
+            "road_name": "中关村大街",
+            "step_distance": "74",
+            "cost": {
+              "duration": "59"
+            }
+          },
+          {
+            "instruction": "沿中关村大街辅路向南步行403米右转",
+            "orientation": "南",
+            "road_name": "中关村大街辅路",
+            "step_distance": "403",
+            "cost": {
+              "duration": "322"
+            }
+          },
+          {
+            "instruction": "向西南步行33米右转",
+            "orientation": "西南",
+            "road_name": "",
+            "step_distance": "33",
+            "cost": {
+              "duration": "26"
+            }
+          },
+          {
+            "instruction": "向西北步行49米左转",
+            "orientation": "西北",
+            "road_name": "",
+            "step_distance": "49",
+            "cost": {
+              "duration": "39"
+            }
+          },
+          {
+            "instruction": "向南步行30米向右前方行走",
+            "orientation": "南",
+            "road_name": "",
+            "step_distance": "30",
+            "cost": {
+              "duration": "24"
+            }
+          },
+          {
+            "instruction": "向西南步行50米到达目的地",
+            "orientation": "西南",
+            "road_name": "",
+            "step_distance": "50",
+            "cost": {
+              "duration": "40"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

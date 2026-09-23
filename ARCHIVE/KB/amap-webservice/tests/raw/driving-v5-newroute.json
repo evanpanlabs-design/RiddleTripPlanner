@@ -1,0 +1,184 @@
+{
+  "status": "1",
+  "info": "OK",
+  "infocode": "10000",
+  "count": "3",
+  "route": {
+    "origin": "116.310918,39.992873",
+    "destination": "116.314985,39.980177",
+    "taxi_cost": "13",
+    "paths": [
+      {
+        "distance": "2634",
+        "restriction": "0",
+        "steps": [
+          {
+            "instruction": "向南行驶35米右转",
+            "orientation": "南",
+            "step_distance": "35"
+          },
+          {
+            "instruction": "沿求知路向西行驶538米左转",
+            "orientation": "西",
+            "road_name": "求知路",
+            "step_distance": "538"
+          },
+          {
+            "instruction": "沿颐和园路向南行驶833米左转",
+            "orientation": "南",
+            "road_name": "颐和园路",
+            "step_distance": "833"
+          },
+          {
+            "instruction": "沿北四环西路辅路向东行驶676米右转",
+            "orientation": "东",
+            "road_name": "北四环西路辅路",
+            "step_distance": "676"
+          },
+          {
+            "instruction": "沿善缘街向南行驶410米左转",
+            "orientation": "南",
+            "road_name": "善缘街",
+            "step_distance": "410"
+          },
+          {
+            "instruction": "沿海淀东一街向东行驶133米右转",
+            "orientation": "东",
+            "road_name": "海淀东一街",
+            "step_distance": "133"
+          },
+          {
+            "instruction": "向南行驶9米到达目的地",
+            "orientation": "南",
+            "step_distance": "9"
+          }
+        ]
+      },
+      {
+        "distance": "2659",
+        "restriction": "0",
+        "steps": [
+          {
+            "instruction": "向南行驶35米右转",
+            "orientation": "南",
+            "step_distance": "35"
+          },
+          {
+            "instruction": "沿求知路向西行驶538米左转",
+            "orientation": "西",
+            "road_name": "求知路",
+            "step_distance": "538"
+          },
+          {
+            "instruction": "沿颐和园路途径苏州街向南行驶1.2千米左转",
+            "orientation": "南",
+            "road_name": "颐和园路",
+            "step_distance": "1165"
+          },
+          {
+            "instruction": "沿海淀大街向东行驶665米右转",
+            "orientation": "东",
+            "road_name": "海淀大街",
+            "step_distance": "665"
+          },
+          {
+            "instruction": "沿善缘街向南行驶114米左转",
+            "orientation": "南",
+            "road_name": "善缘街",
+            "step_distance": "114"
+          },
+          {
+            "instruction": "沿海淀东一街向东行驶133米右转",
+            "orientation": "东",
+            "road_name": "海淀东一街",
+            "step_distance": "133"
+          },
+          {
+            "instruction": "向南行驶9米到达目的地",
+            "orientation": "南",
+            "step_distance": "9"
+          }
+        ]
+      },
+      {
+        "distance": "2583",
+        "restriction": "0",
+        "steps": [
+          {
+            "instruction": "向北行驶20米左转",
+            "orientation": "北",
+            "step_distance": "20"
+          },
+          {
+            "instruction": "沿临湖路向西行驶195米左转",
+            "orientation": "西",
+            "road_name": "临湖路",
+            "step_distance": "195"
+          },
+          {
+            "instruction": "向南行驶73米左转",
+            "orientation": "南",
+            "step_distance": "73"
+          },
+          {
+            "instruction": "沿求知路向东行驶231米向左前方行驶",
+            "orientation": "东",
+            "road_name": "求知路",
+            "step_distance": "231"
+          },
+          {
+            "instruction": "沿求知路向东行驶108米左转",
+            "orientation": "东",
+            "road_name": "求知路",
+            "step_distance": "108"
+          },
+          {
+            "instruction": "向北行驶63米右转",
+            "orientation": "北",
+            "step_distance": "63"
+          },
+          {
+            "instruction": "向东行驶258米右转",
+            "orientation": "东",
+            "step_distance": "258"
+          },
+          {
+            "instruction": "沿中关村北大街向南行驶690米向右前方行驶",
+            "orientation": "南",
+            "road_name": "中关村北大街",
+            "step_distance": "690"
+          },
+          {
+            "instruction": "沿中关村北大街途径中关村大街向南行驶286米右转",
+            "orientation": "南",
+            "road_name": "中关村北大街",
+            "step_distance": "286"
+          },
+          {
+            "instruction": "沿海淀北一街向西行驶221米左转",
+            "orientation": "西",
+            "road_name": "海淀北一街",
+            "step_distance": "221"
+          },
+          {
+            "instruction": "沿善缘街向南行驶296米左转",
+            "orientation": "南",
+            "road_name": "善缘街",
+            "step_distance": "296"
+          },
+          {
+            "instruction": "沿海淀东一街向东行驶133米右转",
+            "orientation": "东",
+            "road_name": "海淀东一街",
+            "step_distance": "133"
+          },
+          {
+            "instruction": "向南行驶9米到达目的地",
+            "orientation": "南",
+            "step_distance": "9"
+          }
+        ]
+      }
+    ]
+  }
+}

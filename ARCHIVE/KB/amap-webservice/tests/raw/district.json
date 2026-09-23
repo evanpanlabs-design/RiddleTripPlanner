@@ -1,0 +1,181 @@
+{
+  "status": "1",
+  "info": "OK",
+  "infocode": "10000",
+  "count": "1",
+  "suggestion": {
+    "keywords": [],
+    "cities": []
+  },
+  "districts": [
+    {
+      "citycode": "028",
+      "adcode": "510100",
+      "name": "成都市",
+      "center": "104.066301,30.572961",
+      "level": "city",
+      "districts": [
+        {
+          "citycode": "028",
+          "adcode": "510182",
+          "name": "彭州市",
+          "center": "103.957706,30.990463",
+          "level": "district",
+          "districts": []
+        },
+        {
+          "citycode": "028",
+          "adcode": "510185",
+          "name": "简阳市",
+          "center": "104.547644,30.410937",
+          "level": "district",
+          "districts": []
+        },
+        {
+          "citycode": "028",
+          "adcode": "510131",
+          "name": "蒲江县",
+          "center": "103.506478,30.197558",
+          "level": "district",
+          "districts": []
+        },
+        {
+          "citycode": "028",
+          "adcode": "510105",
+          "name": "青羊区",
+          "center": "104.062415,30.674583",
+          "level": "district",
+          "districts": []
+        },
+        {
+          "citycode": "028",
+          "adcode": "510106",
+          "name": "金牛区",
+          "center": "104.052236,30.691359",
+          "level": "district",
+          "districts": []
+        },
+        {
+          "citycode": "028",
+          "adcode": "510129",
+          "name": "大邑县",
+          "center": "103.51226,30.573004",
+          "level": "district",
+          "districts": []
+        },
+        {
+          "citycode": "028",
+          "adcode": "510184",
+          "name": "崇州市",
+          "center": "103.673025,30.630183",
+          "level": "district",
+          "districts": []
+        },
+        {
+          "citycode": "028",
+          "adcode": "510104",
+          "name": "锦江区",
+          "center": "104.117262,30.598726",
+          "level": "district",
+          "districts": []
+        },
+        {
+          "citycode": "028",
+          "adcode": "510121",
+          "name": "金堂县",
+          "center": "104.411871,30.86203",
+          "level": "district",
+          "districts": []
+        },
+        {
+          "citycode": "028",
+          "adcode": "510183",
+          "name": "邛崃市",
+          "center": "103.464176,30.41029",
+          "level": "district",
+          "districts": []
+        },
+        {
+          "citycode": "028",
+          "adcode": "510118",
+          "name": "新津区",
+          "center": "103.810906,30.410404",
+          "level": "district",
+          "districts": []
+        },
+        {
+          "citycode": "028",
+          "adcode": "510181",
+          "name": "都江堰市",
+          "center": "103.647193,30.988763",
+          "level": "district",
+          "districts": []
+        },
+        {
+          "citycode": "028",
+          "adcode": "510117",
+          "name": "郫都区",
+          "center": "103.900486,30.795113",
+          "level": "district",
+          "districts": []
+        },
+        {
+          "citycode": "028",
+          "adcode": "510116",
+          "name": "双流区",
+          "center": "103.92342,30.574884",
+          "level": "district",
+          "districts": []
+        },
+        {
+          "citycode": "028",
+          "adcode": "510112",
+          "name": "龙泉驿区",
+          "center": "104.27536,30.556808",
+          "level": "district",
+          "districts": []
+        },
+        {
+          "citycode": "028",
+          "adcode": "510108",
+          "name": "成华区",
+          "center": "104.101452,30.659966",
+          "level": "district",
+          "districts": []
+        },
+        {
+          "citycode": "028",
+          "adcode": "510107",
+          "name": "武侯区",
+          "center": "104.043246,30.641849",
+          "level": "district",
+          "districts": []
+        },
+        {
+          "citycode": "028",
+          "adcode": "510113",
+          "name": "青白江区",
+          "center": "104.251342,30.8786",
+          "level": "district",
+          "districts": []
+        },
+        {
+          "citycode": "028",
+          "adcode": "510114",
+          "name": "新都区",
+          "center": "104.158593,30.823568",
+          "level": "district",
+          "districts": []
+        },
+        {
+          "citycode": "028",
+          "adcode": "510115",
+          "name": "温江区",
+          "center": "103.856423,30.681956",
+          "level": "district",
+          "districts": []
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "status": "1",
+  "info": "OK",
+  "infocode": "10000",
+  "trafficinfo": {
+    "description": "京藏高速：科荟桥附近出京方向行驶缓慢；中关村北大街：自南向北缓慢，反向畅通。",
+    "evaluation": {
+      "expedite": "85.71%",
+      "congested": "5.71%",
+      "blocked": "0.00%",
+      "unknown": "8.58%",
+      "status": "2",
+      "description": "轻度拥堵"
+    }
+  }
+}

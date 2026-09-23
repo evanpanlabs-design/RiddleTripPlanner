@@ -1,0 +1,90 @@
+{
+  "status": "1",
+  "info": "OK",
+  "infocode": "10000",
+  "count": "1",
+  "route": {
+    "origin": "116.310918,39.992873",
+    "destination": "116.314985,39.980177",
+    "paths": [
+      {
+        "distance": "1979",
+        "duration": "505",
+        "steps": [
+          {
+            "instruction": "向北骑行19米右转",
+            "orientation": "北",
+            "road_name": "",
+            "step_distance": 19,
+            "cost": {
+              "duration": "5"
+            }
+          },
+          {
+            "instruction": "沿临湖路向东骑行112米右转",
+            "orientation": "东",
+            "road_name": "临湖路",
+            "step_distance": 112,
+            "cost": {
+              "duration": "29"
+            }
+          },
+          {
+            "instruction": "向东骑行163米",
+            "orientation": "东",
+            "road_name": "",
+            "step_distance": 163,
+            "cost": {
+              "duration": "42"
+            }
+          },
+          {
+            "instruction": "向东骑行124米右转",
+            "orientation": "东",
+            "road_name": "",
+            "step_distance": 124,
+            "cost": {
+              "duration": "32"
+            }
+          },
+          {
+            "instruction": "沿中关村北大街向南骑行694米向右前方行驶",
+            "orientation": "南",
+            "road_name": "中关村北大街",
+            "step_distance": 694,
+            "cost": {
+              "duration": "177"
+            }
+          },
+          {
+            "instruction": "沿中关村大街辅路向南骑行662米右转",
+            "orientation": "南",
+            "road_name": "中关村大街辅路",
+            "step_distance": 662,
+            "cost": {
+              "duration": "169"
+            }
+          },
+          {
+            "instruction": "沿海淀东一街向西骑行157米左转",
+            "orientation": "西",
+            "road_name": "海淀东一街",
+            "step_distance": 157,
+            "cost": {
+              "duration": "40"
+            }
+          },
+          {
+            "instruction": "沿海淀东一街向东骑行48米到达目的地",
+            "orientation": "东",
+            "road_name": "海淀东一街",
+            "step_distance": 48,
+            "cost": {
+              "duration": "12"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

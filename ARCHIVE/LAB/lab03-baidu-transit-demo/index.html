@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>百度 JSAPI 4.0 · 跨城火车/飞机路线绘制验证</title>
+<script src="route-data.js"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:#0d1326;color:#e6eaf2}
+  #app{display:flex;height:100vh;width:100vw}
+  #panel{width:300px;flex-shrink:0;background:#141b30;border-right:1px solid #243049;overflow-y:auto;padding:14px 12px}
+  #panel h1{font-size:15px;font-weight:600;color:#fff;margin-bottom:4px}
+  #panel .sub{font-size:11px;color:#6b7691;line-height:1.6;margin-bottom:14px}
+  .route{background:#1a2238;border:1px solid #243049;border-radius:8px;padding:10px;margin-bottom:10px}
+  .route-title{font-size:12px;font-weight:600;color:#9fb3d1;margin-bottom:6px}
+  .route-meta{font-size:10.5px;color:#7a86a3;line-height:1.6}
+  .route-meta b{color:#c8d6ec;font-weight:600}
+  .btn{display:inline-block;padding:6px 14px;margin-top:6px;border:1px solid #2a3654;background:#1a2238;color:#9fb3d1;border-radius:5px;font-size:12px;cursor:pointer;transition:.15s}
+  .btn:hover{border-color:#3a4a72;color:#fff}
+  .btn.active{background:#2563eb;border-color:#2563eb;color:#fff}
+  .legend{margin-top:10px;display:none}
+  .legend .item{display:flex;align-items:center;gap:6px;font-size:10.5px;color:#8a96b3;margin:4px 0}
+  .legend .swatch{width:22px;height:4px;border-radius:2px}
+  #log{margin-top:14px;font-size:10px;color:#5a6580;line-height:1.7;white-space:pre-wrap}
+  #container{flex:1;height:100%;position:relative}
+  #loading{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#8aa0c4;font-size:13px;z-index:50}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="panel">
+    <h1>百度 JSAPI 4.0 迁移验证</h1>
+    <div class="sub">数据来自百度 Direction v2 服务端实测响应（BD09LL 原始 path，未做坐标转换）。点击按钮绘制。</div>
+
+    <div class="route">
+      <div class="route-title" id="t-train-title"></div>
+      <div class="route-meta" id="t-train-meta"></div>
+      <button class="btn" data-route="train">绘制火车路线</button>
+    </div>
+
+    <div class="route">
+      <div class="route-title" id="t-flight-title"></div>
+      <div class="route-meta" id="t-flight-meta"></div>
+      <button class="btn" data-route="flight">绘制飞机路线</button>
+    </div>
+
+    <div class="route">
+      <div class="route-title" id="t-driving-title"></div>
+      <div class="route-meta" id="t-driving-meta"></div>
+      <button class="btn" data-route="driving">绘制驾车路线</button>
+    </div>
+
+    <div style="margin-top:8px">
+      <button class="btn" id="clear">清除全部</button>
+    </div>
+
+    <div class="legend" id="legend">
+      <div class="item"><span class="swatch" style="background:#3b82f6"></span>铁路段（真实车次）</div>
+      <div class="item"><span class="swatch" style="background:#ef4444"></span>飞行段（真实航班）</div>
+      <div class="item"><span class="swatch" style="background:#22c55e"></span>地铁段</div>
+      <div class="item"><span class="swatch" style="background:#64748b"></span>步行段</div>
+      <div class="item"><span class="swatch" style="background:#a855f7"></span>驾车段</div>
+    </div>
+
+    <div id="log"></div>
+  </aside>
+  <div id="container"><div id="loading">正在加载百度 JSAPI 4.0…</div></div>
+</div>
+
+<!-- AK 从 env.js 注入，动态加载 JSAPI（与 amap-jsapi/env.js 模式一致） -->
+<script src="env.js"></script>
+<script>
+(function(){
+  var s = document.createElement('script');
+  s.src = 'https://api.map.baidu.com/api?v=4.0&ak=' + window.BAIDU_AK + '&callback=__bmapReady';
+  window.__bmapReady = function(){ try { window.initDemo(); } catch(e){ document.getElementById('loading').textContent = '初始化失败: ' + e.message; } };
+  s.onerror = function(){ document.getElementById('loading').textContent = 'JSAPI 脚本加载失败（检查 AK/服务开关）'; };
+  document.head.appendChild(s);
+})();
+</script>
+<script>
+var STYLES = {
+  train:  { strokeColor:'#3b82f6', strokeWeight:6, strokeOpacity:0.9 },
+  flight: { strokeColor:'#ef4444', strokeWeight:6, strokeOpacity:0.9, strokeStyle:'dashed' },
+  metro:  { strokeColor:'#22c55e', strokeWeight:4, strokeOpacity:0.85 },
+  walk:   { strokeColor:'#64748b', strokeWeight:3, strokeOpacity:0.7, strokeStyle:'dashed' },
+  driving:{ strokeColor:'#a855f7', strokeWeight:5, strokeOpacity:0.9 }
+};
+var overlays = [];
+var logEl = document.getElementById('log');
+function log(msg){ logEl.textContent += msg + '\n'; }
+
+// 面板填充
+Object.keys(ROUTE_DATA).forEach(function(k){
+  var d = ROUTE_DATA[k];
+  var fmtDur = Math.round((d.meta.duration||0)/60);
+  var metaHtml = '距离 <b>' + ((d.meta.distance||0)/1000).toFixed(1) + ' km</b> · '
+    + '耗时 <b>' + Math.floor(fmtDur/60) + 'h' + (fmtDur%60) + 'm</b>';
+  if (d.meta.price) metaHtml += ' · 票价 <b>¥' + d.meta.price + '</b>';
+  if (d.meta.arrive) metaHtml += '<br>到达 <b>' + d.meta.arrive + '</b>';
+  document.getElementById('t-'+k+'-title').textContent = d.title;
+  document.getElementById('t-'+k+'-meta').innerHTML = metaHtml;
+});
+
+var map = null;
+window.initDemo = function(){
+  map = new BMap.Map('container');
+  map.centerAndZoom(new BMap.Point(116.404, 39.915), 6);
+  map.enableScrollWheelZoom();
+  map.addControl(new BMap.NavigationControl());
+
+  document.getElementById('loading').style.display = 'none';
+  log('[OK] JSAPI 4.0 加载并初始化成功');
+};
+
+function drawRoute(key){
+  var d = ROUTE_DATA[key];
+  var allPts = [];
+  var major = null;
+  d.segments.forEach(function(seg){
+    var pts = seg.points.map(function(p){ return new BMap.Point(p[0], p[1]); });
+    if (!pts.length) return;
+    var style = STYLES[seg.kind] || STYLES.walk;
+    var line = new BMap.Polyline(pts, style);
+    map.addOverlay(line);
+    overlays.push(line);
+    allPts = allPts.concat(pts);
+    // 起终点标记 + 信息窗（仅跨城主干段）
+    if (seg.kind === 'train' || seg.kind === 'flight'){
+      major = seg;
+      var label = new BMap.Label(seg.name, {
+        position: pts[0],
+        offset: new BMap.Size(6, -6)
+      });
+      label.setStyle({ color:'#fff', fontSize:'11px', backgroundColor:'rgba(13,19,38,.85)', border:'1px solid #243049', borderRadius:'4px', padding:'2px 6px' });
+      map.addOverlay(label);
+      overlays.push(label);
+    }
+  });
+  if (allPts.length){
+    var view = map.getViewport(allPts, { margins:[40,40,40,40] });
+    map.centerAndZoom(view.center, view.zoom);
+  }
+  log('[OK] ' + key + '：' + d.segments.length + ' 段全部绘制，主干段 ' + (major ? major.name : '无'));
+  document.getElementById('legend').style.display = 'block';
+}
+
+document.querySelectorAll('.btn[data-route]').forEach(function(btn){
+  btn.addEventListener('click', function(){
+    if (!map){ document.getElementById('loading').textContent = '地图尚未就绪'; return; }
+    document.querySelectorAll('.btn[data-route]').forEach(function(b){ b.classList.remove('active'); });
+    btn.classList.add('active');
+    drawRoute(btn.dataset.route);
+  });
+});
+document.getElementById('clear').addEventListener('click', function(){
+  if (!map) return;
+  overlays.forEach(function(o){ map.removeOverlay(o); });
+  overlays = [];
+  document.querySelectorAll('.btn[data-route]').forEach(function(b){ b.classList.remove('active'); });
+  document.getElementById('legend').style.display = 'none';
+  log('[OK] 已清除全部覆盖物');
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,258 @@
+{
+  "count": "10",
+  "infocode": "10000",
+  "pois": [
+    {
+      "parent": "",
+      "address": "颐和园路5号",
+      "business": {
+        "keytag": "985大学",
+        "business_area": "西苑",
+        "alias": "PKU|北京大学燕园校区|北大",
+        "rectag": "漫游未名湖畔"
+      },
+      "distance": "",
+      "pcode": "110000",
+      "adcode": "110108",
+      "pname": "北京市",
+      "cityname": "北京市",
+      "type": "科教文化服务;学校;高等院校",
+      "typecode": "141201",
+      "adname": "海淀区",
+      "citycode": "010",
+      "children": [
+        {
+          "typecode": "150904",
+          "address": "颐和园路5号北京大学",
+          "subtype": "停车场",
+          "sname": " 地面停车场 ",
+          "name": "北京大学燕园校区地面停车场",
+          "location": "116.312170,39.992885",
+          "id": "B0FFHGMFYE"
+        }
+      ],
+      "name": "北京大学",
+      "location": "116.310918,39.992873",
+      "id": "B000A816R6"
+    },
+    {
+      "parent": "",
+      "address": "学院路38号",
+      "business": {
+        "keytag": "985大学",
+        "business_area": "牡丹园",
+        "alias": "北京大学医学部|北京医科大学",
+        "tel": "010-62091114;010-82802191",
+        "rectag": "985大学"
+      },
+      "distance": "",
+      "pcode": "110000",
+      "adcode": "110108",
+      "pname": "北京市",
+      "cityname": "北京市",
+      "type": "科教文化服务;学校;高等院校",
+      "typecode": "141201",
+      "adname": "海淀区",
+      "citycode": "010",
+      "children": [
+        {
+          "typecode": "150905",
+          "address": "学院路38号北京大学(学院路校区)",
+          "subtype": "停车场",
+          "sname": " 内部地面停车场 ",
+          "name": "北京大学学院路校区内部地面停车场",
+          "location": "116.361050,39.986302",
+          "id": "B0FFM56ZLQ"
+        }
+      ],
+      "name": "北京大学(学院路校区)",
+      "location": "116.357828,39.984810",
+      "id": "B000A7CDQ4"
+    },
+    {
+      "parent": "",
+      "address": "南涧路北侧",
+      "business": {
+        "keytag": "985大学",
+        "tel": "010-89748044",
+        "rectag": "985大学"
+      },
+      "distance": "",
+      "pcode": "110000",
+      "adcode": "110114",
+      "pname": "北京市",
+      "cityname": "北京市",
+      "type": "科教文化服务;学校;高等院校",
+      "typecode": "141201",
+      "adname": "昌平区",
+      "citycode": "010",
+      "children": [
+        {
+          "typecode": "150904",
+          "address": "南涧路北侧北京大学(昌平校区)",
+          "subtype": "停车场",
+          "sname": " 停车场 ",
+          "name": "北京大学昌平校区停车场",
+          "location": "116.191698,40.246502",
+          "id": "B0H2CSUB17"
+        }
+      ],
+      "name": "北京大学(昌平校区)",
+      "location": "116.189912,40.247449",
+      "id": "B000A7ORQI"
+    },
+    {
+      "parent": "B000A816R6",
+      "address": "中关村北大街32号(北京大学东门地铁站B东北口步行360米)",
+      "business": {
+        "keytag": "学院",
+        "business_area": "中关村",
+        "tel": "010-62751812",
+        "rectag": "学院"
+      },
+      "distance": "",
+      "pcode": "110000",
+      "adcode": "110108",
+      "pname": "北京市",
+      "cityname": "北京市",
+      "type": "科教文化服务;学校;高等院校",
+      "typecode": "141201",
+      "adname": "海淀区",
+      "citycode": "010",
+      "name": "北京大学工学院",
+      "location": "116.317239,39.994496",
+      "id": "B0FFFPD48E"
+    },
+    {
+      "parent": "B000A816R6",
+      "address": "颐和园路5号北京大学",
+      "business": {
+        "keytag": "教学楼",
+        "business_area": "西苑",
+        "rectag": "教学楼"
+      },
+      "distance": "",
+      "pcode": "110000",
+      "adcode": "110108",
+      "pname": "北京市",
+      "cityname": "北京市",
+      "type": "科教文化服务;学校;高等院校",
+      "typecode": "141201",
+      "adname": "海淀区",
+      "citycode": "010",
+      "name": "北京大学地学楼",
+      "location": "116.311874,39.991727",
+      "id": "B000A80CV9"
+    },
+    {
+      "parent": "B000A816R6",
+      "address": "颐和园路5号北京大学内",
+      "business": {
+        "keytag": "学院",
+        "business_area": "西苑",
+        "tel": "010-62751634",
+        "rectag": "学院"
+      },
+      "distance": "",
+      "pcode": "110000",
+      "adcode": "110108",
+      "pname": "北京市",
+      "cityname": "北京市",
+      "type": "科教文化服务;学校;高等院校",
+      "typecode": "141201",
+      "adname": "海淀区",
+      "citycode": "010",
+      "name": "北京大学国际关系学院",
+      "location": "116.306830,39.991752",
+      "id": "B000A84LKE"
+    },
+    {
+      "parent": "B000A816R6",
+      "address": "颐和园路5号北京大学",
+      "business": {
+        "keytag": "高等教育",
+        "business_area": "西苑",
+        "tel": "010-62758951",
+        "rectag": "高等教育"
+      },
+      "distance": "",
+      "pcode": "110000",
+      "adcode": "110108",
+      "pname": "北京市",
+      "cityname": "北京市",
+      "type": "科教文化服务;学校;高等院校",
+      "typecode": "141201",
+      "adname": "海淀区",
+      "citycode": "010",
+      "name": "北京大学外国语学院",
+      "location": "116.312612,39.997918",
+      "id": "B0FFK27QEZ"
+    },
+    {
+      "parent": "B000A7CDQ4",
+      "address": "学院路38号(学院桥地铁站C2口步行470米)",
+      "business": {
+        "keytag": "教学楼",
+        "business_area": "牡丹园",
+        "rectag": "教学楼"
+      },
+      "distance": "",
+      "pcode": "110000",
+      "adcode": "110108",
+      "pname": "北京市",
+      "cityname": "北京市",
+      "type": "科教文化服务;学校;学校",
+      "typecode": "141200",
+      "adname": "海淀区",
+      "citycode": "010",
+      "name": "北京大学医学科技楼",
+      "location": "116.355409,39.985728",
+      "id": "B0H3RCH6NE"
+    },
+    {
+      "parent": "B000A816R6",
+      "address": "颐和园路5号北京大学",
+      "business": {
+        "keytag": "学院",
+        "business_area": "西苑",
+        "tel": "010-62756141",
+        "rectag": "学院"
+      },
+      "distance": "",
+      "pcode": "110000",
+      "adcode": "110108",
+      "pname": "北京市",
+      "cityname": "北京市",
+      "type": "科教文化服务;学校;高等院校",
+      "typecode": "141201",
+      "adname": "海淀区",
+      "citycode": "010",
+      "name": "北京大学教育学院",
+      "location": "116.311628,39.988980",
+      "id": "B000A91SLI"
+    },
+    {
+      "parent": "B000A816R6",
+      "address": "颐和园路5号东门(北京大学东门地铁站B东北口步行140米)",
+      "business": {
+        "keytag": "大学",
+        "business_area": "西苑",
+        "rectag": "大学"
+      },
+      "distance": "",
+      "pcode": "110000",
+      "adcode": "110108",
+      "pname": "北京市",
+      "cityname": "北京市",
+      "type": "科教文化服务;学校;高等院校",
+      "typecode": "141201",
+      "adname": "海淀区",
+      "citycode": "010",
+      "name": "北京大学北区",
+      "location": "116.31534,39.992203",
+      "id": "B0FFFZRA8L"
+    }
+  ],
+  "status": "1",
+  "info": "OK"
+}

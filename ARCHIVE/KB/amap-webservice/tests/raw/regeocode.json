@@ -1,0 +1,50 @@
+{
+  "status": "1",
+  "regeocode": {
+    "addressComponent": {
+      "city": [],
+      "province": "北京市",
+      "adcode": "110108",
+      "district": "海淀区",
+      "towncode": "110108015000",
+      "streetNumber": {
+        "number": "5号",
+        "location": "116.310454,39.992734",
+        "direction": "西",
+        "distance": "42.4641",
+        "street": "颐和园路"
+      },
+      "country": "中国",
+      "township": "燕园街道",
+      "businessAreas": [
+        {
+          "location": "116.292805,39.995872",
+          "name": "西苑",
+          "id": "110108"
+        },
+        {
+          "location": "116.303368,39.976410",
+          "name": "万泉河",
+          "id": "110108"
+        },
+        {
+          "location": "116.321669,39.985266",
+          "name": "中关村",
+          "id": "110108"
+        }
+      ],
+      "building": {
+        "name": [],
+        "type": []
+      },
+      "neighborhood": {
+        "name": "北京大学",
+        "type": "科教文化服务;学校;高等院校"
+      },
+      "citycode": "010"
+    },
+    "formatted_address": "北京市海淀区燕园街道北京大学"
+  },
+  "info": "OK",
+  "infocode": "10000"
+}

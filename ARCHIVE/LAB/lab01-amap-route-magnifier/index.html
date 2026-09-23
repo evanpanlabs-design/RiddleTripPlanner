@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>三层级通勤路线 · 高德 JSAPI v2.0</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:#0d1326;color:#e6eaf2}
+  #app{display:flex;height:100vh;width:100vw}
+  /* 左侧面板 */
+  #panel{width:280px;flex-shrink:0;background:#141b30;border-right:1px solid #243049;overflow-y:auto;padding:14px 12px}
+  #panel h1{font-size:15px;font-weight:600;color:#fff;margin-bottom:4px}
+  #panel .sub{font-size:11px;color:#6b7691;line-height:1.5;margin-bottom:14px}
+  .layer{background:#1a2238;border:1px solid #243049;border-radius:8px;padding:10px;margin-bottom:10px}
+  .layer-title{font-size:12px;font-weight:600;color:#9fb3d1;margin-bottom:6px}
+  .modes{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:7px}
+  .mode-btn{flex:1;min-width:54px;padding:5px 6px;border:1px solid #2a3654;background:#1a2238;color:#9fb3d1;border-radius:5px;font-size:11px;cursor:pointer;transition:.15s}
+  .mode-btn:hover{border-color:#3a4a72}
+  .mode-btn.active{color:#fff;border-color:transparent}
+  .info{font-size:10.5px;color:#7a86a3;line-height:1.5;min-height:14px}
+  .style-box{margin-top:6px}
+  .style-box label{display:block;font-size:11px;color:#6b7691;margin-bottom:4px}
+  .style-box select{width:100%;padding:4px 6px;background:#1a2238;color:#e6eaf2;border:1px solid #2a3654;border-radius:5px;font-size:11px;cursor:pointer}
+  .style-box select:focus{outline:none;border-color:#3a4a72}
+  /* 视角切换 */
+  #view-toggle{position:absolute;top:12px;right:12px;display:flex;gap:6px;z-index:120}
+  #view-toggle button{padding:5px 12px;border:1px solid #243049;background:rgba(20,27,48,.9);color:#9fb3d1;border-radius:5px;font-size:11px;cursor:pointer}
+  #view-toggle button.active{color:#fff;border-color:transparent}
+  .hint{position:absolute;top:50px;right:12px;background:rgba(20,27,48,.9);color:#6b7691;font-size:10px;padding:4px 8px;border-radius:4px;border:1px solid #243049;z-index:120;pointer-events:none}
+  /* 主图 */
+  #container{flex:1;height:100%;position:relative}
+  /* 放大镜 */
+  #magnifier{position:absolute;width:280px;height:280px;border-radius:50%;overflow:hidden;border:4px solid #fff;box-shadow:0 8px 40px rgba(0,0,0,.6),0 0 0 1px rgba(0,0,0,.2);z-index:200;display:none;transform:translate(-50%,-50%);user-select:none}
+  #magnifier.show{display:block;animation:pop .18s ease}
+  @keyframes pop{from{transform:translate(-50%,-50%) scale(.6);opacity:0}to{transform:translate(-50%,-50%) scale(1);opacity:1}}
+  #mag-map{position:absolute;inset:0}
+  #mag-close{position:absolute;top:8px;right:8px;width:26px;height:26px;border-radius:50%;border:none;background:rgba(0,0,0,.55);color:#fff;font-size:16px;cursor:pointer;z-index:210;display:flex;align-items:center;justify-content:center;line-height:1}
+  #mag-close:hover{background:rgba(0,0,0,.85)}
+  #mag-label{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.6);color:#fff;font-size:11px;padding:3px 12px;border-radius:12px;white-space:nowrap;z-index:210;pointer-events:none}
+  #loading{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#8aa0c4;font-size:13px;z-index:50}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="panel">
+    <h1>三层级通勤路线</h1>
+    <div class="sub">点击地图上任意一条线路弹出放大镜。放大镜点击外部关闭、拖拽主体移动、拖拽边缘调节大小。</div>
+
+    <div class="layer" data-layer="intercity">
+      <div class="layer-title">跨城：天津站→北京南站</div>
+      <div class="modes">
+        <button class="mode-btn active" data-mode="driving">驾车</button>
+        <button class="mode-btn" data-mode="geodesic">测地线</button>
+      </div>
+      <div class="info" data-info></div>
+    </div>
+
+    <div class="layer" data-layer="city">
+      <div class="layer-title">城区：北京南站→北大东门</div>
+      <div class="modes">
+        <button class="mode-btn active" data-mode="driving">驾车</button>
+        <button class="mode-btn" data-mode="riding">骑行</button>
+        <button class="mode-btn" data-mode="transfer">公交</button>
+      </div>
+      <div class="info" data-info></div>
+    </div>
+
+    <div class="layer" data-layer="campus">
+      <div class="layer-title">园区：家园食堂→图书馆</div>
+      <div class="modes">
+        <button class="mode-btn active" data-mode="walking">步行</button>
+        <button class="mode-btn" data-mode="riding">骑行</button>
+      </div>
+      <div class="info" data-info></div>
+    </div>
+
+    <div class="sub" style="margin-top:8px;color:#5a6580">
+      测地线(geodesic)为地球曲面最短路径，此处作为跨城火车/飞机交通线的代指。
+    </div>
+
+    <div class="style-box">
+      <label>底图风格</label>
+      <select id="base-style"></select>
+    </div>
+    <div class="style-box">
+      <label>放大镜风格</label>
+      <select id="mag-style"></select>
+    </div>
+  </aside>
+
+  <main id="container">
+    <div id="view-toggle">
+      <button id="btn-aerial" class="active">鸟瞰</button>
+      <button id="btn-flat">平面</button>
+    </div>
+    <div class="hint">点击线路放大 · 拖边缩放 · 拖体移动</div>
+    <div id="loading">正在加载地图与规划路线…</div>
+    <div id="magnifier">
+      <button id="mag-close" aria-label="关闭">×</button>
+      <div id="mag-map"></div>
+      <div id="mag-label"></div>
+    </div>
+  </main>
+</div>
+
+<script src="env.js"></script>
+<script src="https://webapi.amap.com/loader.js"></script>
+<script>
+/* 起终点坐标(已 geocode 预置) */
+const WP = {
+  tianjin:[117.210089,39.135951], bjSouth:[116.378059,39.867679],
+  pkuEast:[116.315811,39.992127], canteen:[116.308027,39.987985], library:[116.309972,39.991902],
+};
+
+/* 每层：origin/dest，各 mode 的 overlays+path+info，当前 mode */
+const LAYERS = {
+  intercity:{ name:'跨城：天津站→北京南站', origin:WP.tianjin, dest:WP.bjSouth,
+    color:{driving:'#1890ff',geodesic:'#722ed1'},
+    modes:{driving:{overlays:[],path:null,info:''}, geodesic:{overlays:[],path:null,info:''}},
+    current:'driving' },
+  city:{ name:'城区：北京南站→北大东门', origin:WP.bjSouth, dest:WP.pkuEast,
+    color:{driving:'#1890ff',riding:'#fa8c16',transfer:'#13c2c2'},
+    modes:{driving:{overlays:[],path:null,info:''}, riding:{overlays:[],path:null,info:''}, transfer:{overlays:[],path:null,info:''}},
+    current:'driving' },
+  campus:{ name:'园区：家园食堂→图书馆', origin:WP.canteen, dest:WP.library,
+    color:{walking:'#13c2c2',riding:'#fa8c16'},
+    modes:{walking:{overlays:[],path:null,info:''}, riding:{overlays:[],path:null,info:''}},
+    current:'walking' },
+};
+
+let map, AMap, magMap=null;
+let activeKey=null;       // 放大镜当前展示的层
+let magSize=280;          // 放大镜直径(px)
+let magStyle='amap://styles/whitesmoke';   // 放大镜当前地图风格
+
+/* 官方地图风格(11种全量) */
+const STYLES=[
+  {name:'标准',        val:'amap://styles/normal'},
+  {name:'幻影黑',      val:'amap://styles/dark'},
+  {name:'月光银',      val:'amap://styles/light'},
+  {name:'远山黛',      val:'amap://styles/whitesmoke'},
+  {name:'草色青',      val:'amap://styles/fresh'},
+  {name:'雅士灰',      val:'amap://styles/grey'},
+  {name:'涂鸦',        val:'amap://styles/graffiti'},
+  {name:'马卡龙',      val:'amap://styles/macaron'},
+  {name:'靛青蓝',      val:'amap://styles/blue'},
+  {name:'极夜蓝',      val:'amap://styles/darkblue'},
+  {name:'酱籽',        val:'amap://styles/wine'},
+];
+
+/* ---------- 工具 ---------- */
+function fmtDist(m){return m==null?'—':(m<1000?Math.round(m)+'米':(m/1000).toFixed(1)+'公里');}
+function fmtTime(s){ if(s==null)return '—'; s=+s; if(isNaN(s))return '—';
+  const h=Math.floor(s/3600),m=Math.round((s%3600)/60); return h>0?`${h}小时${m}分`:`${m}分钟`; }
+function endMark(pos,label,color){
+  return new AMap.Marker({ position:pos,
+    content:`<div style="width:16px;height:16px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;color:#fff;font-size:8px;font-weight:700">${label}</div>`,
+    offset:new AMap.Pixel(-8,-8), zIndex:120 });
+}
+function setInfo(key,mode,text){
+  const L=LAYERS[key]; if(!L)return; L.modes[mode].info=text;
+  if(mode===L.current){ const el=document.querySelector(`.layer[data-layer="${key}"] [data-info]`); if(el)el.textContent=text; }
+}
+
+/* ---------- 启动 ---------- */
+window._AMapSecurityConfig = { securityJsCode: window.AMAP_CONFIG.securityJsCode };
+AMapLoader.load({
+  key: window.AMAP_CONFIG.key, version:'2.0',
+  plugins:['AMap.Driving','AMap.Riding','AMap.Walking','AMap.Transfer','AMap.Scale'],
+}).then((AM)=>{
+  AMap = AM;
+  AMap.getConfig().appname = 'amap-jsapi-skill';   // skill 铁律
+  map = new AMap.Map('container',{ viewMode:'3D', zoom:10, pitch:40, center:[116.9,39.93],
+    mapStyle:'amap://styles/dark' });
+  map.addControl(new AMap.Scale());
+  document.getElementById('loading').style.display='none';
+  planAll();
+  bindUI();
+  bindMagnifier();
+  bindViewToggle();
+  bindStyleSwitch();
+}).catch(e=>{
+  document.getElementById('loading').textContent='地图加载失败：'+(e||'')+'（检查 env.js 的 key/安全密钥）';
+  console.error(e);
+});
+
+/* ---------- 规划所有路线 ---------- */
+function planAll(){
+  // 顺序：先规划异步的，geodesic 同步
+  planDriving('intercity'); drawGeodesic('intercity');
+  planDriving('city'); planRiding('city'); planTransfer('city');
+  planWalking('campus'); planRiding('campus');
+}
+
+function bindClickToOverlays(key, mode){
+  // 给该 mode 所有 Polyline（含透明热区）绑点击，弹出放大镜(显示点击的那条)
+  const L=LAYERS[key]; const m=L.modes[mode];
+  m.overlays.forEach(o=>{
+    // Polyline 类实例都有 getPath 方法
+    if(o && typeof o.getPath === 'function'){
+      o.on('click',(ev)=>{ openMagnifier(key, mode, ev); });
+    }
+  });
+}
+
+function planDriving(key){
+  const L=LAYERS[key];
+  new AMap.Driving({policy:AMap.DrivingPolicy.LEAST_TIME}).search(L.origin,L.dest,(st,res)=>{
+    if(st!=='complete'||!res.routes||!res.routes[0]){ setInfo(key,'driving','驾车规划失败'); return; }
+    const r=res.routes[0]; const path=[]; r.steps.forEach(s=>path.push(...s.path));
+    const m=L.modes.driving; m.path=path; m.info=`驾车 ${fmtDist(r.distance)} · ${fmtTime(r.time)}`;
+    m.overlays = buildLineOverlays(key,'driving',path,'solid');
+    m.overlays.forEach(o=>map.add(o)); bindClickToOverlays(key,'driving');
+    setInfo(key,'driving',m.info);
+  });
+}
+function planRiding(key){
+  const L=LAYERS[key];
+  new AMap.Riding().search(L.origin,L.dest,(st,res)=>{
+    console.log('[Riding]', key, 'status=', st, 'res=', res);
+    if(st!=='complete'){
+      // 失败时把真实原因显示出来，便于诊断
+      let why = st;
+      if(res){
+        if(typeof res==='string') why = res;
+        else if(res.info) why = res.info;
+        else if(res.message) why = res.message;
+        else why = JSON.stringify(res).slice(0,80);
+      }
+      setInfo(key,'riding','骑行失败：'+why);
+      return;
+    }
+    // 兼容两种返回结构：res.rides[] 或 res.routes[]
+    const list = (res && (res.rides || res.routes)) || [];
+    const r = list[0];
+    if(!r){ setInfo(key,'riding','骑行失败：无方案'); return; }
+    // 骑行单条结果直接带 path；兜底 skill 示例的 route.rides 结构
+    let path = Array.isArray(r.path) ? r.path.slice() : [];
+    if(path.length===0 && Array.isArray(r.rides)){
+      r.rides.forEach(x=>{ if(Array.isArray(x.path)) path.push(...x.path); });
+    }
+    if(path.length===0){ setInfo(key,'riding','骑行失败：无路径'); return; }
+    const m=L.modes.riding; m.path=path;
+    m.info=`骑行 ${fmtDist(r.distance)} · ${fmtTime(r.time||r.duration)}`;
+    m.overlays = buildLineOverlays(key,'riding',path,'dashed');
+    m.overlays.forEach(o=>map.add(o)); bindClickToOverlays(key,'riding');
+    setInfo(key,'riding',m.info);
+  });
+}
+function planWalking(key){
+  const L=LAYERS[key];
+  new AMap.Walking().search(L.origin,L.dest,(st,res)=>{
+    if(st!=='complete'||!res.routes||!res.routes[0]){ setInfo(key,'walking','步行规划失败'); return; }
+    const r=res.routes[0]; const path=[]; r.steps.forEach(s=>path.push(...s.path));
+    const m=L.modes.walking; m.path=path; m.info=`步行 ${fmtDist(r.distance)} · ${fmtTime(r.time)}`;
+    m.overlays = buildLineOverlays(key,'walking',path,'dashed');
+    m.overlays.forEach(o=>map.add(o)); bindClickToOverlays(key,'walking');
+    setInfo(key,'walking',m.info);
+  });
+}
+function planTransfer(key){
+  const L=LAYERS[key];
+  new AMap.Transfer({city:'北京市',policy:AMap.TransferPolicy.LEAST_TIME}).search(L.origin,L.dest,(st,res)=>{
+    if(st!=='complete'||!res.plans||!res.plans[0]){ setInfo(key,'transfer','公交规划失败'); return; }
+    const p=res.plans[0]; const path=[];
+    p.segments.forEach(seg=>{ if(seg.transit&&seg.transit.path)path.push(...seg.transit.path); if(seg.walking&&seg.walking.path)path.push(...seg.walking.path); });
+    const m=L.modes.transfer; m.path=path; m.info=`公交 ${fmtTime(p.time)} · 步行${fmtDist(p.walking_distance||0)}`;
+    m.overlays = buildLineOverlays(key,'transfer',path,'solid');
+    m.overlays.forEach(o=>map.add(o)); bindClickToOverlays(key,'transfer');
+    setInfo(key,'transfer',m.info);
+  });
+}
+function drawGeodesic(key){
+  const L=LAYERS[key]; const path=[L.origin,L.dest];
+  const m=L.modes.geodesic; m.path=path;
+  const d = AMap.GeometryUtil ? AMap.GeometryUtil.distance(L.origin,L.dest) : null;
+  m.info = `测地线(代指火车/飞机) ${fmtDist(d)} · 大圆弧`;
+  m.overlays = buildLineOverlays(key,'geodesic',path,'dashed', true);
+  m.overlays.forEach(o=>map.add(o)); bindClickToOverlays(key,'geodesic');
+  setInfo(key,'geodesic',m.info);
+}
+
+/* 构造一条路线的全部覆盖物：透明热区(粗、可点) + 主线 + 描边 + 起终点 */
+function buildLineOverlays(key, mode, path, style, geodesic){
+  const L=LAYERS[key]; const c=L.color[mode];
+  const arr = [];
+  // 点击热区：透明粗线，方便点击
+  arr.push(new AMap.Polyline({ path, geodesic:!!geodesic, strokeColor:'#000', strokeOpacity:0, strokeWeight:22, lineJoin:'round', zIndex:40 }));
+  // 底层光晕
+  arr.push(new AMap.Polyline({ path, geodesic:!!geodesic, strokeColor:c, strokeWeight:9, strokeOpacity:.22, lineJoin:'round', zIndex:48 }));
+  // 主线
+  arr.push(new AMap.Polyline({ path, geodesic:!!geodesic, strokeColor:c, strokeWeight:5, strokeOpacity:.95,
+    lineJoin:'round', lineCap:'round', strokeStyle:style, strokeDasharray: style==='dashed'?[10,6]:undefined, zIndex:50 }));
+  arr.push(endMark(L.origin,'起','#52c41a'), endMark(L.dest,'终','#f5222d'));
+  return arr;
+}
+
+/* ---------- UI 绑定 ---------- */
+function bindUI(){
+  document.querySelectorAll('.layer').forEach(el=>{
+    const key=el.dataset.layer;
+    el.querySelectorAll('.mode-btn').forEach(btn=>{
+      const mode=btn.dataset.mode;
+      btn.addEventListener('click',()=>switchMode(key,mode));
+      if(btn.classList.contains('active')) btn.style.background=LAYERS[key].color[mode];
+    });
+  });
+}
+function switchMode(key,mode){
+  const L=LAYERS[key];
+  // 移除旧 mode 的覆盖物，显示新 mode
+  Object.entries(L.modes).forEach(([mname,mo])=>{
+    const show = (mname===mode);
+    mo.overlays.forEach(o=>{ try{ show ? map.add(o) : map.remove(o); }catch(e){} });
+  });
+  L.current = mode;
+  // 按钮着色
+  document.querySelectorAll(`.layer[data-layer="${key}"] .mode-btn`).forEach(b=>{
+    b.classList.toggle('active', b.dataset.mode===mode);
+    b.style.background = b.dataset.mode===mode ? L.color[mode] : '';
+  });
+  setInfo(key, mode, L.modes[mode].info);
+  // 放大镜若显示该层，同步刷新
+  if(activeKey===key && document.getElementById('magnifier').classList.contains('show')){
+    drawInMagnifier(L, mode);
+  }
+}
+
+/* ---------- 视角切换 ---------- */
+function bindViewToggle(){
+  const a=document.getElementById('btn-aerial'), f=document.getElementById('btn-flat');
+  a.addEventListener('click',()=>{ map.setPitch(40); map.setViewMode('3D'); a.classList.add('active'); f.classList.remove('active'); });
+  f.addEventListener('click',()=>{ map.setPitch(0); map.setViewMode('2D'); f.classList.add('active'); a.classList.remove('active'); });
+}
+
+/* ---------- 地图风格切换(底图 / 放大镜 各自独立) ---------- */
+function bindStyleSwitch(){
+  const baseSel=document.getElementById('base-style');
+  const magSel=document.getElementById('mag-style');
+  STYLES.forEach(s=>{
+    baseSel.add(new Option(s.name,s.val));
+    magSel.add(new Option(s.name,s.val));
+  });
+  baseSel.value='amap://styles/dark';         // 与初始化 mapStyle 一致
+  magSel.value='amap://styles/whitesmoke';    // 与放大镜默认一致
+  // 底图：立即切换
+  baseSel.addEventListener('change',()=>{ map.setMapStyle(baseSel.value); });
+  // 放大镜：记住选择；若放大镜正开着，实时换
+  magSel.addEventListener('change',()=>{
+    magStyle=magSel.value;
+    if(magMap){ try{ magMap.setMapStyle(magStyle); }catch(e){} }
+  });
+}
+
+/* ---------- 放大镜 ---------- */
+function openMagnifier(key, mode, ev){
+  const L=LAYERS[key];
+  if(!L || !L.modes[mode] || !L.modes[mode].path) return;
+  L.current = mode;                 // 同步当前 mode，按钮高亮一致
+  activeKey = key;
+  setInfo(key, mode, L.modes[mode].info);  // 同步面板信息栏
+  // 同步该层面板按钮高亮
+  document.querySelectorAll(`.layer[data-layer="${key}"] .mode-btn`).forEach(b=>{
+    const on = b.dataset.mode===mode;
+    b.classList.toggle('active', on);
+    b.style.background = on ? L.color[mode] : '';
+  });
+  const mag=document.getElementById('magnifier');
+  // 定位到点击的像素位置(若有)或路线中点
+  let px;
+  if(ev && ev.pixel){ px={x:ev.pixel.x,y:ev.pixel.y}; }
+  else { const mid=[(L.origin[0]+L.dest[0])/2,(L.origin[1]+L.dest[1])/2]; px=map.lngLatToContainer(mid); }
+  // 边界 clamp：不超出主图容器
+  const cont=document.getElementById('container').getBoundingClientRect();
+  const r=magSize/2;
+  px.x=Math.max(r+4, Math.min(cont.width-r-4, px.x));
+  px.y=Math.max(r+4, Math.min(cont.height-r-4, px.y));
+  mag.style.width=magSize+'px'; mag.style.height=magSize+'px';
+  mag.style.left=px.x+'px'; mag.style.top=px.y+'px';
+  mag.classList.add('show');
+  document.getElementById('mag-label').textContent = `${L.name} · ${L.modes[mode].info}`;
+  if(magMap){ try{magMap.destroy();}catch(e){} magMap=null; }
+  magMap = new AMap.Map('mag-map',{ zoom:13, viewMode:'2D', mapStyle:magStyle });
+  drawInMagnifier(L, mode);
+}
+function drawInMagnifier(L, mode){
+  const m=L.modes[mode]; if(!m||!m.path||!magMap)return;
+  const c=L.color[mode];
+  const line=new AMap.Polyline({ path:m.path, map:magMap, geodesic:mode==='geodesic',
+    strokeColor:c, strokeWeight:6, strokeOpacity:.95, lineJoin:'round', lineCap:'round',
+    strokeStyle:(mode==='riding'||mode==='walking'||mode==='geodesic')?'dashed':'solid', strokeDasharray:[8,5] });
+  new AMap.Marker({ map:magMap, position:L.origin, content:`<div style="width:12px;height:12px;border-radius:50%;background:#52c41a;border:2px solid #fff"></div>`, offset:new AMap.Pixel(-6,-6) });
+  new AMap.Marker({ map:magMap, position:L.dest, content:`<div style="width:12px;height:12px;border-radius:50%;background:#f5222d;border:2px solid #fff"></div>`, offset:new AMap.Pixel(-6,-6) });
+  magMap.setFitView([line], false, [40,40,40,40]);
+  document.getElementById('mag-label').textContent = `${L.name} · ${m.info}`;
+}
+function closeMagnifier(){
+  document.getElementById('magnifier').classList.remove('show');
+  if(magMap){ try{magMap.destroy();}catch(e){} magMap=null; }
+  activeKey=null;
+}
+
+function bindMagnifier(){
+  const mag=document.getElementById('magnifier');
+  document.getElementById('mag-close').addEventListener('click',(e)=>{ e.stopPropagation(); closeMagnifier(); });
+  // 主图空白点击 -> 关闭
+  map.on('click',()=>{ if(document.getElementById('magnifier').classList.contains('show')) closeMagnifier(); });
+  // 放大镜内部点击不冒泡到主图(防止点放大镜自己反而关闭)
+  mag.addEventListener('click',(e)=>{ e.stopPropagation(); });
+
+  /* —— 拖拽：主体移动 / 边缘缩放 —— */
+  let dragging=null;     // 'move' | 'resize' | null
+  let start={};
+  mag.addEventListener('mousedown',(e)=>{
+    if(e.target.id==='mag-close') return;       // 关闭按钮不触发拖拽
+    const rect=mag.getBoundingClientRect();
+    const cx=rect.left+rect.width/2, cy=rect.top+rect.height/2;
+    const dx=e.clientX-cx, dy=e.clientY-cy;
+    const dist=Math.hypot(dx,dy);
+    const radius=rect.width/2;
+    if(dist > radius-14){            // 边缘环：缩放
+      dragging='resize'; start={cx,cy,radius};
+    } else {                         // 内部：移动
+      dragging='move';
+      const cRect=document.getElementById('container').getBoundingClientRect();
+      start={ offX:e.clientX - (rect.left), offY:e.clientY - (rect.top), cRect };
+    }
+    e.preventDefault(); e.stopPropagation();
+  });
+  window.addEventListener('mousemove',(e)=>{
+    if(!dragging) return;
+    if(dragging==='move'){
+      const cRect=start.cRect;
+      let nx=e.clientX-cRect.left-start.offX+magSize/2;
+      let ny=e.clientY-cRect.top-start.offY+magSize/2;
+      const r=magSize/2;
+      nx=Math.max(r+4,Math.min(cRect.width-r-4,nx));
+      ny=Math.max(r+4,Math.min(cRect.height-r-4,ny));
+      mag.style.left=nx+'px'; mag.style.top=ny+'px';
+    } else if(dragging==='resize'){
+      const rect=mag.getBoundingClientRect();
+      const cx=rect.left+rect.width/2, cy=rect.top+rect.height/2;
+      const newR=Math.hypot(e.clientX-cx, e.clientY-cy);
+      const sz=Math.max(160, Math.min(420, newR*2));
+      magSize=sz; mag.style.width=sz+'px'; mag.style.height=sz+'px';
+      // 子图容器变了，通知地图重新计算尺寸
+      if(magMap){ try{magMap.resize();}catch(e){} }
+    }
+  });
+  window.addEventListener('mouseup',()=>{ dragging=null; });
+
+  /* —— 边缘光标 —— */
+  mag.addEventListener('mousemove',(e)=>{
+    if(dragging) return;             // 拖拽中不变
+    if(e.target.id==='mag-close'){ mag.style.cursor=''; return; }
+    const rect=mag.getBoundingClientRect();
+    const cx=rect.left+rect.width/2, cy=rect.top+rect.height/2;
+    const dist=Math.hypot(e.clientX-cx, e.clientY-cy);
+    const radius=rect.width/2;
+    mag.style.cursor = (dist>radius-14) ? 'nwse-resize' : 'move';
+  });
+}
+</script>
+</body>
+</html>

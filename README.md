@@ -78,6 +78,7 @@ APP/            TypeScript application (agent loop, Jev client, tools, server)
   scripts/            Jev regression (test-d4) + Baidu transit regression (test-baidu)
 UI/app.html     the notebook UI (single file, no build step)
 SPEC/           architecture & judgment-system design docs (Chinese)
+ARCHIVE/        exploration lineage & reference material: RAWIDEAS → ANALYSIS → PRD → LAB prototypes → KB API docs (see ARCHIVE/README.md)
 ```
 
 ## How a turn works

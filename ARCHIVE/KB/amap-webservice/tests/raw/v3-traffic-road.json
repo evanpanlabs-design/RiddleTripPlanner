@@ -1,0 +1,16 @@
+{
+  "status": "1",
+  "info": "OK",
+  "infocode": "10000",
+  "trafficinfo": {
+    "description": "中关村大街：双向畅通。",
+    "evaluation": {
+      "expedite": "100.00%",
+      "congested": "0.00%",
+      "blocked": "0.00%",
+      "unknown": "0.00%",
+      "status": "1",
+      "description": "畅通"
+    }
+  }
+}
