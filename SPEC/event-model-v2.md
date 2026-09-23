@@ -1,8 +1,12 @@
-# Riddle 事件模型 v2 Schema（草案）
+# Riddle 事件模型 v2 Schema
 
-> 版本：v0.1 草案（2026-09-23） | 状态：**待用户过目，审过才动工（0.4.1）**
+> 版本：v0.2（2026-09-23） | 状态：**已审过，0.4.1 已落地**
 > 上游依据：0.4.x 设计讨论共识（事件分类建模 / 事件图管理 / 数据层百度+OSM Hybrid）
 > 读者：工程、Agent 开发。与 SPEC.md 的关系：SPEC 描述 v1 现行模型，本文档是 v2 的迁移目标。
+> 0.4.1 实现位置：`APP/src/memory/event-v2.ts`（Schema + 组装 + V8）、`migrate-v2.ts`（惰性迁移）、
+> `project-v1.ts`（v2→v1 投影兼容桥，0.4.3 前台切换后退役）、`tools/baidu-place.ts`（place detail 富化）、
+> `tools/osm-aoi.ts`（OSM 边界获取器）；纯逻辑单测 `APP/scripts/test-v2.ts`（`npm run test:v2`）。
+> 落地偏差说明：v1 投影是 0.4.1 的兼容策略——v2 树为唯一事实源，UI/D7/摘要暂消费投影，与本文件不冲突。
 
 ---
 

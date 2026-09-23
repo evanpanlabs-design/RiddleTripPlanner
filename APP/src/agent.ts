@@ -12,7 +12,11 @@ import { Type } from "@sinclair/typebox";
 import { join } from "node:path";
 import { JevClient } from "./jev/client.ts";
 import { TH, d4ChecklistMatchQuestions } from "./jev/questions.ts";
-import { TripStore, tripSummary, planDesc, gateReport, type Trip } from "./memory/trip-store.ts";
+import { TripStore, tripSummary, planDesc, gateReport, destList, type Trip } from "./memory/trip-store.ts";
+import { assembleDraft, checkChainCompleteness, isAoi, isPoi, isRoute, childrenOf, type DraftV2, type EventV2, type RouteEvent, type AoiEvent, type PoiEvent } from "./memory/event-v2.ts";
+import { syncProjection } from "./memory/project-v1.ts";
+import { enrichFromBaidu } from "./tools/baidu-place.ts";
+import { fetchAoiBoundary, convexHull } from "./tools/osm-aoi.ts";
 import { Scheduler } from "./scheduler/scheduler.ts";
 import { searchPoi, drivingRoute, walkingRoute, bicyclingRoute, cityTransitRoute, geodesicM } from "./tools/amap.ts";
 import { intercityRoute, type IntercityPrefer } from "./tools/baidu.ts";
@@ -26,8 +30,8 @@ const SYSTEM = `你是 Riddle，一个旅行规划 Copilot（像一本会回应�
 - 你能推断的时间/安排就推断，推断不了的如实留空请用户补充，绝不编造精确事实（班次/票价/营业时间）。
 - 跨城火车/飞机/大巴有真实数据源：用 get_route 的 transit 模式查询（返回真实车次/航班号、时刻、票价，为查询当日班次，会随出发日期变化——方案中应表述为"代表性班次"，出行前需复核）。
 - 判断由系统中的 Jev 引擎做出：你每次说话前会看到它对你上一输入的意图概率分析和当前阶段，请尊重这些判断。
-- 方案结构：每天由 Event 序列组成（visit/dine/transit/lodging），每天以住宿或场站收尾。
-- 生成方案前先确认天数与目的地已记录（get_trip_state 可查），然后调 apply_plan 提交完整方案。
+- 方案结构（v2 事件树）：事件分三类——poi（点：游览/住宿/场站）、route（线：通勤段，用 detail.from/to 引用两端事件的 tmp_id）、aoi（面：景区，可用 parent_id 嵌套子事件）。同一天内相邻两个活动之间必须有一个 route 事件连接，漏了会被结构校验（V8）直接打回。每天以住宿或场站收尾。
+- 生成方案前先确认天数与目的地已记录（get_trip_state 可查），然后调 apply_plan 提交完整方案（扁平事件列表，tmp_id + parent_id + seq 表达嵌套）。
 - 如果系统告诉你有待确认问题（pending），先处理它。`;
 
 /** 由设置中心解析当前 LLM（provider 预设 + 用户覆盖 + 环境变量兜底）。
@@ -64,7 +68,7 @@ const streamWithSettings: any = (model: any, context: any, options: any) => {
 
 /** UI/Server 可订阅的运行时事件（Jev 判断、pending 队列、地理解析、阶段门） */
 export interface RiddleEvent {
-  type: "jev" | "pending" | "geo" | "gate";
+  type: "jev" | "pending" | "geo" | "gate" | "aoi" | "state_dirty";
   sub?: string;            // jev: 意图/槽位复核/半径判定/校验/挂起消费
   [k: string]: unknown;
 }
@@ -179,19 +183,27 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
   const applyPlan: AgentTool = {
     name: "apply_plan",
     label: "生成/重写方案",
-    description: "提交完整方案草案落图。会经过语义校验（V1-V7），不通过则返回失败原因需修复后重试。days 数组长度必须等于状态中的天数。硬性要求：同一天内相邻两个活动（poi/lodging/terminal）之间必须有一个 transit item 连接——同城段 mode 写步行/骑行/公交/地铁/驾车，跨城段才写火车/飞机/大巴，不允许只罗列 poi 而省略通勤环节。transit 项的 mode 须写明真实通勤方式：市内段系统按 mode 调高德补真实路径与耗时，跨城段调百度补真实班次。",
+    description: `提交完整方案草案落图（v2 扁平事件列表，SPEC/event-model-v2.md §6）。
+事件分三类：poi（点：游览/住宿/场站，detail.role 标 lodging/terminal，默认 activity）、route（线：通勤段，detail.from/to 填两端事件的 tmp_id，detail.mode 写真实通勤方式——同城步行/骑行/公交/地铁/驾车，跨城火车/飞机/大巴）、aoi（面：景区，子事件用 parent_id 指它，AOI 不套 AOI，深度 ≤3）。
+硬性要求（V8 结构校验，违反直接打回重提）：同一天内相邻两个顶层活动事件（poi/aoi）之间必须有一个 route 事件连接，不允许只罗列活动而省略通勤环节。
+时间用 "HH:MM"（day_refs 标第几天，可跨日）；推断不了的留 null，绝不编造班次/票价/营业时间（系统会调真实 API 回填）。
+示例：{"days":3,"events":[{"tmp_id":"e1","kind":"poi","name":"成都东站","day_refs":[1],"detail":{"role":"terminal"},"time_window":{"start":"07:30"}},{"tmp_id":"e2","kind":"route","name":"成都→九寨沟","day_refs":[1],"detail":{"mode":"大巴","from":"e1","to":"e3"}},{"tmp_id":"e3","kind":"aoi","name":"九寨沟","day_refs":[1,2,3]},{"tmp_id":"e4","kind":"poi","name":"则查洼沟","parent_id":"e3","seq":1,"day_refs":[2]}],"checklist":[...]}`,
     parameters: Type.Object({
-      days: Type.Array(Type.Object({
-        day: Type.Number(),
-        items: Type.Array(Type.Object({
-          type: Type.Union([Type.Literal("poi"), Type.Literal("transit"), Type.Literal("lodging"), Type.Literal("terminal")]),
-          name: Type.String(),
+      days: Type.Number(),
+      events: Type.Array(Type.Object({
+        tmp_id: Type.String(),
+        kind: Type.Union([Type.Literal("poi"), Type.Literal("route"), Type.Literal("aoi")]),
+        name: Type.String(),
+        parent_id: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+        seq: Type.Optional(Type.Number()),
+        day_refs: Type.Array(Type.Number()),
+        time_window: Type.Optional(Type.Union([Type.Object({
           start: Type.Optional(Type.Union([Type.String(), Type.Null()])),
           end: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-          mode: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-          from: Type.Optional(Type.String()), to: Type.Optional(Type.String()),
-          note: Type.Optional(Type.String()),
-        })),
+        }), Type.Null()])),
+        cost: Type.Optional(Type.Union([Type.Object({ amount: Type.Number(), currency: Type.Optional(Type.String()) }), Type.Null()])),
+        note: Type.Optional(Type.String()),
+        detail: Type.Optional(Type.Record(Type.String(), Type.Any())),
       })),
       checklist: Type.Array(Type.Object({
         title: Type.String(),
@@ -200,8 +212,17 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
       })),
     }),
     execute: async (_id, draft) => {
+      // 结构校验（组装 + V8 链条完整）在落图前：失败直接打回，不产生任何状态变更
+      const pre = await applyDraftV2(store, draft as DraftV2, emit, /*dryRun*/ true);
+      if (!pre.ok) {
+        return { content: [{ type: "text", text: `草案结构校验未通过，未落图。请修复后重新提交：\n${pre.errors.map(e => `- [${e.code}] ${e.message}`).join("\n")}` }], details: { errors: pre.errors } };
+      }
       store.snapshot("apply_plan");
-      const { gaps, autoEdges, skippedIntercity } = await applyDraft(store.trip, draft, emit);
+      const applied = await applyDraftV2(store, draft as DraftV2, emit);
+      if (!applied.ok) { // 与 dryRun 之间无并发变更，理论不可达；防御
+        store.undo();
+        return { content: [{ type: "text", text: `草案结构校验未通过：${applied.errors.map(e => e.message).join("；")}` }], details: {} };
+      }
       store.save(); // 落图后立即落盘：校验或系统异常崩溃不丢方案（校验失败路径 undo 会再纠正）
       const verify = await jev.d7Verify(planDesc(store.trip));
       const fails = Object.keys(verify).filter(k => !k.endsWith("_prob") && verify[k] === "fail");
@@ -214,16 +235,17 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
         store.undo();
         return { content: [{ type: "text", text: `校验未通过（${fails.join(", ")}），请修复后重新提交。概率：${fails.map(f => `${f}=${verify[f + "_prob"].toFixed(2)}`).join(", ")}` }], details: { verify } };
       }
+      // 落图校验通过：整树 draft → active（SPEC §3.1 status 语义），投影同步为 locked
+      for (const ev of Object.values(store.trip.events_v2 ?? {})) if (ev.status === "draft") ev.status = "active";
+      syncProjection(store.trip);
+      store.save();
+      const { warnings, gaps, aoiAsync } = applied;
+      const warnNote = warnings.length ? `。提示：${warnings.join("；")}` : "";
       const gapNote = gaps.length
-        ? `。注意：${gaps.length} 条通勤边未获得真实路径——${gaps.map(g => `${g.from}→${g.to}（${g.mode}：${g.reason}）`).join("，")}。可用 search_poi 核实节点名后重新 apply_plan 修复，或在回复中向用户说明`
+        ? `。注意：${gaps.length} 条通勤段未获得真实路径——${gaps.map(g => `${g.from}→${g.to}（${g.mode}：${g.reason}）`).join("，")}。可用 search_poi 核实点位名后重新 apply_plan 修复，或在回复中向用户说明`
         : "";
-      const autoNote = autoEdges
-        ? `。工程层检测到同日相邻活动间缺通勤边，已按距离自动补 ${autoEdges} 条（≤1.5km 步行 / 其余驾车，已解析真实路径）`
-        : "";
-      const skipNote = skippedIntercity
-        ? `。另有 ${skippedIntercity} 处同日相邻活动跨城（>100km）且无通勤边，请补充火车/飞机/大巴 transit item`
-        : "";
-      return { content: [{ type: "text", text: `方案已落图并通过校验：${Object.keys(store.trip.events).length} 个 Event，${Object.keys(store.trip.checklist).length} 项清单。当前阶段 ${store.trip.stage}${autoNote}${skipNote}${gapNote}` }], details: { verify, route_gaps: gaps, auto_edges: autoEdges } };
+      const aoiNote = aoiAsync ? `。${aoiAsync} 个景区的边界正在后台获取（OSM），成功后会自动热替换包络` : "";
+      return { content: [{ type: "text", text: `方案已落图并通过校验：${Object.keys(store.trip.events_v2 ?? {}).length} 个事件（含嵌套），${Object.keys(store.trip.checklist).length} 项清单。当前阶段 ${store.trip.stage}${aoiNote}${gapNote}${warnNote}` }], details: { verify, route_gaps: gaps, warnings } };
     },
   };
 
@@ -247,7 +269,11 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
       store.snapshot("confirm_progress");
       let locked = 0;
       const done: string[] = [], skipped: string[] = [];
-      if (lock) for (const e of Object.values(store.trip.events)) if (e.status === "tentative") { e.status = "locked"; locked++; }
+      // 锁定走 v2 事实源：draft → active，投影同步为 v1 的 locked（SPEC §3.1 status 语义）
+      if (lock) {
+        for (const e of Object.values(store.trip.events_v2 ?? {})) if (e.status === "draft") { e.status = "active"; locked++; }
+        syncProjection(store.trip);
+      }
       for (const itemId of requested) {
         const c = store.trip.checklist[itemId];
         if (!c || c.done) continue;
@@ -482,103 +508,196 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
   return { agent, store, jev, scheduler, onEvent, emit };
 }
 
-/** 草案落图（事务式，移植自 orchestrator.py _apply_draft）。
- * 落图后做真实地理解析：节点经高德 searchPoi 补坐标，边按 mode 补距离/时长（失败降级留空）。 */
-async function applyDraft(trip: Trip, draft: any, emit?: (ev: RiddleEvent) => void): Promise<{ gaps: { from: string; to: string; mode: string; reason: string }[]; autoEdges: number; skippedIntercity: number }> {
-  const nodes: Trip["nodes"] = {}, edges: Trip["edges"] = {}, events: Trip["events"] = {}, checklist: Trip["checklist"] = {};
-  const name2node = new Map<string, any>();
-  const nid = (p: string) => `${p}_${Math.random().toString(16).slice(2, 10)}`;
-  const ensureNode = (name: string, anchor: "none" | "lodging" | "terminal" = "none") => {
-    const existing = name2node.get(name);
-    if (existing) { if (anchor !== "none") existing.anchor = anchor; return existing; }
-    const n = { node_id: nid("node"), name, anchor, geo: null, amap_poi_id: null, category_tags: [], opening_hours: null };
-    nodes[n.node_id] = n; name2node.set(name, n);
-    return n;
-  };
-  for (const d of draft.days ?? []) {
-    let prev: any = null;
-    for (const it of d.items ?? []) {
-      const tw = { start: it.start ?? null, end: it.end ?? null, source: it.start ? "inferred" : "blank" };
-      if (it.type === "transit") {
-        const fn = ensureNode(it.from || prev?.name || "未知");
-        const tn = ensureNode(it.to || "未知");
-        const e = { edge_id: nid("edge"), from_id: fn.node_id, to_id: tn.node_id, mode: it.mode || "drive", distance_m: null, duration_s: null, data_source: "empty", geometry: [] };
-        edges[e.edge_id] = e;
-        const ev = { event_id: nid("evt"), anchor_kind: "edge" as const, anchor_ref: e.edge_id, kind: "transit", day_refs: [d.day], time_window: tw, cost: null, status: "tentative" as const, note: `${fn.name}→${tn.name}（${e.mode}）` };
-        events[ev.event_id] = ev;
-      } else {
-        const anchor = it.type === "lodging" ? "lodging" as const : it.type === "terminal" ? "terminal" as const : "none" as const;
-        const n = ensureNode(it.name, anchor);
-        const ev = { event_id: nid("evt"), anchor_kind: "node" as const, anchor_ref: n.node_id, kind: it.type === "lodging" ? "lodging" : it.type === "terminal" ? "transit" : "visit", day_refs: [d.day], time_window: tw, cost: null, status: "tentative" as const, note: it.note || "" };
-        events[ev.event_id] = ev;
+/** 草案落图 v2（SPEC/event-model-v2.md §6 服务端组装职责 + §7 边界 fallback 链）。
+ * 管线：组装（结构校验）→ V8 链条完整（schema 层硬校验，漏 route 直接打回，不再工程兜底补边）
+ *      → 地理解析（高德坐标）→ 百度 place detail 富化（opening/price/rating/scope_grade）
+ *      → route 数据补全（高德市内 / 百度跨城班次）→ AOI 包络上线 + OSM 边界后台获取。
+ * dryRun=true 时只做结构校验（apply_plan execute 的前置打回检查），不落地、不发起任何 IO。 */
+type ApplyV2Result =
+  | { ok: true; warnings: string[]; gaps: { from: string; to: string; mode: string; reason: string }[]; aoiAsync: number }
+  | { ok: false; errors: { code: string; message: string }[] };
+
+async function applyDraftV2(store: TripStore, draft: DraftV2, emit?: (ev: RiddleEvent) => void, dryRun = false): Promise<ApplyV2Result> {
+  const asm = assembleDraft(draft);
+  if (!asm.ok) return { ok: false, errors: asm.errors };
+  const v8 = checkChainCompleteness(asm.events);
+  if (v8.length) return { ok: false, errors: v8 };
+  if (dryRun) return { ok: true, warnings: asm.warnings, gaps: [], aoiAsync: 0 };
+
+  const trip = store.trip;
+  const events = asm.events;
+  const cityHint = destList(trip)[0];
+
+  // 1. poi/aoi 地理解析 + 百度富化（SPEC §10：place detail 接入）
+  const places = Object.values(events).filter(e => isPoi(e) || isAoi(e));
+  let done = 0;
+  for (const ev of places) {
+    if (isPoi(ev)) {
+      try {
+        const r = await searchPoi(ev.name);
+        if (r?.geo) {
+          ev.detail.geo = { ...r.geo, source: "api" }; // 字段级 source 比事件级更强（SPEC §5）
+          ev.detail.poi_ref = { ...ev.detail.poi_ref, amap_poi_id: r.amap_poi_id };
+          if (!ev.detail.category_tags?.length) ev.detail.category_tags = r.category_tags ?? [];
+          ev.detail.city = r.city ?? null;
+        }
+      } catch { /* 单点失败降级为无坐标，不阻断落图 */ }
+    }
+    // 百度富化：opening_detail / price / rating / scope_grade / classified_poi_tag（best-effort）
+    try {
+      const en = await enrichFromBaidu(ev.name, cityHint);
+      if (en) {
+        if (isPoi(ev)) {
+          ev.detail.poi_ref = { ...ev.detail.poi_ref, baidu_uid: en.baidu_uid };
+          if (en.detail?.opening_detail) ev.detail.opening_detail = en.detail.opening_detail;
+          if (en.detail?.price) ev.detail.price = { ...en.detail.price, source: "api" };
+          if (en.detail?.rating) ev.detail.rating = { ...en.detail.rating, source: "api" };
+          if (en.detail?.scope_grade) ev.detail.scope_grade = en.detail.scope_grade;
+          if (en.detail?.category_tags.length) ev.detail.category_tags = en.detail.category_tags;
+        } else {
+          if (en.detail?.opening_detail) ev.detail.opening_detail = en.detail.opening_detail;
+          if (en.detail?.price) ev.detail.ticket = { ...en.detail.price, source: "api" };
+        }
       }
-      prev = it;
+    } catch { /* 富化失败留 null，共创补 */ }
+    emit?.({ type: "geo", done: ++done, total: places.length });
+  }
+
+  // 2. route 数据补全（高德市内真实路径 / 百度跨城真实班次）
+  const routes = Object.values(events).filter(isRoute);
+  for (const r of routes) await resolveRouteDataV2(r, events);
+
+  // 3. 通勤路径完备性收尾 + 缺口收集
+  const gaps: { from: string; to: string; mode: string; reason: string }[] = [];
+  const geoOf = (id: string) => {
+    const e = events[id];
+    if (!e) return null;
+    if (isPoi(e)) return e.detail.geo;
+    const kid = childrenOf(events, id).map(k => isPoi(k) ? k.detail.geo : null).find(Boolean);
+    return kid ?? null; // aoi 端点取首个有坐标子事件
+  };
+  for (const r of routes) {
+    const a = geoOf(r.detail.from_ref), b = geoOf(r.detail.to_ref);
+    if (a && b && r.detail.geometry.length < 2) r.detail.geometry = [[a.lng, a.lat], [b.lng, b.lat]];
+    if (r.detail.data_source === "empty") {
+      const missing = !a ? events[r.detail.from_ref]?.name : events[r.detail.to_ref]?.name;
+      gaps.push({ from: events[r.detail.from_ref]?.name ?? "?", to: events[r.detail.to_ref]?.name ?? "?", mode: r.detail.mode, reason: `端点「${missing}」坐标未解析` });
+    } else if (r.detail.data_source === "geodesic" && !GEO.has(r.detail.mode)) {
+      gaps.push({ from: events[r.detail.from_ref]?.name ?? "?", to: events[r.detail.to_ref]?.name ?? "?", mode: r.detail.mode, reason: "算路失败，降级为直线估算" });
     }
   }
+
+  // 4. AOI 边界 fallback 链（SPEC §7）：先包络上线 → OSM 异步获取成功后热替换 → 都失败入清单共创
+  const nid = (p: string) => `${p}_${Math.random().toString(16).slice(2, 10)}`;
+  const checklist: Trip["checklist"] = {};
+  let aoiAsync = 0;
+  for (const aoi of Object.values(events).filter(isAoi)) {
+    const kidGeos = childrenOf(events, aoi.event_id)
+      .flatMap(k => isPoi(k) && k.detail.geo ? [[k.detail.geo.lng, k.detail.geo.lat] as [number, number]] : []);
+    if (kidGeos.length >= 3) {
+      aoi.detail.boundary = { polygon: convexHull(kidGeos), source: "envelope" };
+      aoi.detail.envelope_fallback = true;   // UI 虚线面渲染
+      aoi.detail.boundary_status = "done";
+    }
+    aoiAsync++;
+    void (async () => {
+      const b = await fetchAoiBoundary(aoi.name);
+      const cur = store.trip.events_v2?.[aoi.event_id]; // 校验失败 undo 后旧对象作废，防御性检查
+      if (!cur || !isAoi(cur) || cur.status === "dropped") return;
+      if (b) {
+        cur.detail.boundary = { polygon: b.polygon, source: "osm", osm_relation_id: b.osm_relation_id, attribution: b.attribution };
+        cur.detail.envelope_fallback = false;
+        cur.detail.boundary_status = "done";
+        emit?.({ type: "aoi", sub: "boundary", name: aoi.name, source: "osm", points: b.polygon.length });
+      } else if (!cur.detail.boundary) {
+        // ① OSM 失败 且 ② 包络不可得 → ③ 清单共创（SPEC §7）
+        cur.detail.boundary_status = "failed";
+        const item = { item_id: nid("chk"), title: `确认「${aoi.name}」景区大致范围`, category: "info" as const, info_spec: { what: `${aoi.name} 的景区边界/大致范围`, expect: "用户确认大致范围后边界标记为 user_confirmed", impact: "地图无法渲染景区面，内部动线缺少空间参照" }, done: false, due_offset_days: null };
+        store.trip.checklist[item.item_id] = item;
+        emit?.({ type: "aoi", sub: "boundary_failed", name: aoi.name });
+      } else {
+        cur.detail.boundary_status = "done"; // 包络即终态（OSM 未拿到真边界）
+        emit?.({ type: "aoi", sub: "boundary", name: aoi.name, source: "envelope" });
+      }
+      syncProjection(store.trip);
+      store.save();
+      emit?.({ type: "state_dirty" }); // SSE 推前端重绘（热替换）
+    })();
+  }
+
+  // 5. 清单（同 v1 管线）
   for (const c of draft.checklist ?? []) {
     const item = { item_id: nid("chk"), title: c.title, category: c.category, info_spec: c.info_spec ?? null, done: false, due_offset_days: null };
     checklist[item.item_id] = item;
   }
-  // 地理解析：节点坐标（真实地图渲染的前提）
-  const nodeList = Object.values(nodes);
-  let done = 0;
-  for (const n of nodeList) {
+
+  trip.events_v2 = events;
+  trip.checklist = checklist;
+  if (!trip.days) trip.days = draft.days || 0;
+  syncProjection(trip); // v2 → v1 投影（UI/D7 继续消费，0.4.3 再切）
+  return { ok: true, warnings: asm.warnings, gaps, aoiAsync };
+}
+
+/** 单条 route 事件的数据源解析（原地修改）。策略与 v1 resolveEdgeData 一致：
+ * 市内通勤必须有真实路径与耗时（高德）；跨城走百度真实班次并回填 detail.schedule；
+ * 未识别 mode 按直线距离推断；解析失败降级测地线距离。 */
+async function resolveRouteDataV2(ev: RouteEvent, events: Record<string, EventV2>) {
+  const geoOf = (id: string): { lat: number; lng: number } | null => {
+    const e = events[id];
+    if (!e) return null;
+    if (isPoi(e)) return e.detail.geo ?? null;
+    const kid = childrenOf(events, id).map(k => isPoi(k) ? k.detail.geo : null).find(Boolean);
+    return kid ?? null;
+  };
+  const a = geoOf(ev.detail.from_ref), b = geoOf(ev.detail.to_ref);
+  if (!a || !b) return;
+  const d = ev.detail;
+  const prefer = transitPrefer(d.mode);
+  if (prefer) {
     try {
-      const r = await searchPoi(n.name);
-      if (r?.geo) { n.geo = r.geo; n.amap_poi_id = r.amap_poi_id; n.category_tags = r.category_tags ?? []; n.city = r.city ?? null; }
-    } catch { /* 单点失败降级为无坐标，不阻断落图 */ }
-    emit?.({ type: "geo", done: ++done, total: nodeList.length });
+      const r = await intercityRoute(a, b, prefer);
+      if (r) {
+        d.distance_m = r.distance_m; d.duration_s = r.duration_s;
+        d.data_source = "baidu_transit"; d.geometry = r.geometry;
+        if (r.main) {
+          const hm = (s?: string) => s ? String(s).slice(11, 16) : undefined; // "2026-09-23 07:00:00" → "07:00"
+          d.schedule = {
+            line: r.main.name ?? "?",
+            depart: hm(r.main.depart_at), arrive: hm(r.main.arrive_at),
+            price: r.main.price ?? r.price,
+            disclaimer: "查询当日代表性班次，出行前需复核",
+          };
+          ev.cost = d.schedule.price != null ? { amount: d.schedule.price, currency: "CNY", source: "api" } : ev.cost;
+          if (!ev.note) ev.note = `${events[d.from_ref]?.name ?? "?"}→${events[d.to_ref]?.name ?? "?"}（${r.main.type === "flight" ? "航班" : r.main.type === "train" ? "车次" : "线路"} ${d.schedule.line}，${d.schedule.depart ?? "时刻待核"} 发）`;
+        }
+      }
+    } catch { /* 百度未配置或查询失败：留空待回填 */ }
+    return;
   }
-  // v0.3.5 工程兜底：同一天相邻两个节点事件之间没有通勤边 → 按距离分级自动补边。
-  // LLM 常漏写市内通勤 item；≤100km 的断段纯机械可推断（≤1.5km 步行 / 其余驾车），
-  // >100km 的断段说明漏了跨城大交通环节，不臆造，计数返回让 LLM 补 transit item。
-  let autoEdges = 0, skippedIntercity = 0;
-  const byDay = new Map<number, any[]>();
-  for (const ev of Object.values<any>(events)) {
-    if (ev.anchor_kind !== "node") continue;
-    for (const d of ev.day_refs ?? []) {
-      if (!byDay.has(d)) byDay.set(d, []);
-      byDay.get(d)!.push(ev);
-    }
+  if (GEO.has(d.mode)) { d.distance_m = Math.round(geodesicM(a, b)); d.data_source = "geodesic"; return; }
+  let kind: "walk" | "bike" | "drive" | "transit" | null =
+    WALK.has(d.mode) ? "walk" : BIKE.has(d.mode) ? "bike" : CITY.has(d.mode) ? "transit" : DRIVE.has(d.mode) ? "drive" : null;
+  if (!kind) {
+    kind = geodesicM(a, b) <= 1500 ? "walk" : "drive";
+    d.mode = kind === "walk" ? "步行" : "驾车"; // 推断结果写回，展示与数据源一致
   }
-  for (const evs of byDay.values()) {
-    evs.sort((x, y) => String(x.time_window?.start ?? "99").localeCompare(String(y.time_window?.start ?? "99")));
-    for (let i = 0; i + 1 < evs.length; i++) {
-      const aId = evs[i].anchor_ref, bId = evs[i + 1].anchor_ref;
-      if (aId === bId) continue;
-      const linked = Object.values<any>(edges).some(e => (e.from_id === aId && e.to_id === bId) || (e.from_id === bId && e.to_id === aId));
-      if (linked) continue;
-      const ga = nodes[aId]?.geo, gb = nodes[bId]?.geo;
-      if (!ga || !gb) continue; // 坐标未解析的断段无法推断距离，交由 gaps 提示节点问题
-      const dist = geodesicM(ga, gb);
-      if (dist > 100_000) { skippedIntercity++; continue; }
-      // 两端都是场站且相距 >30km：典型跨城铁路段，大交通必须由 LLM 的 transit item 负责，不臆造驾车
-      if (dist > 30_000 && nodes[aId]?.anchor === "terminal" && nodes[bId]?.anchor === "terminal") { skippedIntercity++; continue; }
-      const e = { edge_id: nid("edge"), from_id: aId, to_id: bId, mode: dist <= 1500 ? "步行" : "驾车", distance_m: null, duration_s: null, data_source: "empty", geometry: [], auto: true };
-      edges[e.edge_id] = e;
-      autoEdges++;
+  try {
+    const fromEv = events[d.from_ref], toEv = events[d.to_ref];
+    const cityHint = (fromEv && isPoi(fromEv) ? fromEv.detail.city : null)
+      ?? (toEv && isPoi(toEv) ? toEv.detail.city : null) ?? "";
+    const r = kind === "walk" ? await walkingRoute(a, b)
+      : kind === "bike" ? await bicyclingRoute(a, b)
+      : kind === "transit" ? await cityTransitRoute(a, b, cityHint)
+      : await drivingRoute(a, b);
+    if (r) {
+      d.distance_m = r.distance_m ?? Math.round(geodesicM(a, b));
+      d.duration_s = r.duration_s ?? null;
+      d.data_source = `amap_${kind}` as RouteEvent["detail"]["data_source"];
+      d.geometry = r.geometry ?? [];
+      return;
     }
-  }
-  // 边数据补全：逐条调用共享解析函数（迁移脚本复用同一策略；自动补的边也走同一管线）
-  for (const e of Object.values(edges)) await resolveEdgeData(e, nodes, events);
-  // 通勤路径完备性收尾：凡有起讫坐标的边保底两点几何（地图不断线）；
-  // 收集缺口（算路降级 / 节点无坐标）返回给调用方，由 LLM 修复或向用户说明
-  const gaps: { from: string; to: string; mode: string; reason: string }[] = [];
-  for (const e of Object.values(edges)) {
-    const a = nodes[e.from_id]?.geo, b = nodes[e.to_id]?.geo;
-    if (a && b && (!Array.isArray(e.geometry) || e.geometry.length < 2)) {
-      e.geometry = [[a.lng, a.lat], [b.lng, b.lat]];
-    }
-    if (e.data_source === "empty") {
-      const missing = !nodes[e.from_id]?.geo ? nodes[e.from_id]?.name : nodes[e.to_id]?.name;
-      gaps.push({ from: nodes[e.from_id]?.name ?? e.from_id, to: nodes[e.to_id]?.name ?? e.to_id, mode: e.mode, reason: `节点「${missing}」坐标未解析` });
-    } else if (e.data_source === "geodesic" && !GEO.has(e.mode)) {
-      gaps.push({ from: nodes[e.from_id]?.name ?? e.from_id, to: nodes[e.to_id]?.name ?? e.to_id, mode: e.mode, reason: "算路失败，降级为直线估算" });
-    }
-  }
-  trip.nodes = nodes; trip.edges = edges; trip.events = events; trip.checklist = checklist;
-  if (!trip.days) trip.days = (draft.days ?? []).length;
-  return { gaps, autoEdges, skippedIntercity };
+  } catch { /* 降级测地线 */ }
+  d.distance_m = Math.round(geodesicM(a, b)); d.data_source = "geodesic";
 }
 
 /* ================= 边数据补全（applyDraft 与迁移脚本共用） =================

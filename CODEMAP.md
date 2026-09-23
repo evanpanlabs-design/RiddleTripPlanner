@@ -37,7 +37,12 @@ server.ts ──► 每项目一个 RiddleRuntime（agent.ts createRiddleAgent�
 | `agent.ts` | **装配核心**：SYSTEM prompt、7 个工具定义、Jev 三个注入点、applyDraft 落图 | `createRiddleAgent()`；`transformContext`（D1 意图+pending 消费）、`beforeToolCall`（槽位复核/D4 清单指代/D6 半径门禁）、`applyDraft()`（草案→图，地理解析+边补全） |
 | `jev/client.ts` | Jev HTTP 客户端封装 | `JevClient.ask(state, questions)` 批量判断；`d7Verify()` |
 | `jev/questions.ts` | **全部判断问题与阈值定义**（判断系统的"法典"） | `TH` 阈值表（intentState 0.8 / slotAccept 0.6 / checklistMatch 0.7…）；`INTENTS` + `STATE_CHANGE_INTENTS`；`d1IntentQuestions`、`d4ChecklistMatchQuestions`、`d6RadiusQuestion`、`d7VerifyQuestions`、`pendingConsumeQuestion` |
-| `memory/trip-store.ts` | 领域模型 + event sourcing 存储 | `Trip` 图（nodes/edges/events/checklist/candidate_pool）；`gateReport()`（D3 阶段门槛机械检查）；`TripStore`（ops.jsonl 日志/快照/undo） |
+| `memory/trip-store.ts` | 领域模型 + event sourcing 存储 | `Trip` 图（nodes/edges/events/checklist/candidate_pool + **events_v2**，0.4.1 起 v2 树为事实源）；`gateReport()`（D3 阶段门槛机械检查）；`TripStore`（ops.jsonl 日志/快照/undo，构造时 v1→v2 惰性迁移） |
+| `memory/event-v2.ts` | **v2 事件 Schema**（poi/route/aoi 判别联合 + 嵌套规则 + provenance） | `assembleDraft()`（扁平草案→树，结构校验打回）；`checkChainCompleteness()`（V8 链条完整硬校验）；`walkTree/childrenOf` |
+| `memory/migrate-v2.ts` | v1→v2 迁移器（SPEC/event-model-v2.md §9） | `migrateTripV1toV2()`：Node_→poi / Edge_→route / Event_合并上移；status 与 provenance 映射 |
+| `memory/project-v1.ts` | v2→v1 投影兼容桥（UI/D7 暂消费，0.4.3 退役） | `projectV1()` 纯函数派生 nodes/edges/events；`syncProjection()` 变更后必调 |
+| `tools/baidu-place.ts` | 百度 Place 检索+详情（0.4.1 富化） | `enrichFromBaidu()`：opening_detail/price/rating/scope_grade/classified_poi_tag |
+| `tools/osm-aoi.ts` | OSM AOI 边界异步获取器（SPEC §7 第①级） | `fetchAoiBoundary()`（Nominatim→Overpass 镜像轮询→WGS84→GCJ02→DP 抽稀→30 天缓存）；`convexHull`（包络兜底） |
 | `scheduler/scheduler.ts` | 阶段机 + pending 队列（持久化） | `Scheduler.enqueue/dequeue`；队列落盘 `pending.json`，重启恢复 |
 | `tools/amap.ts` | 高德 Web 服务（POI/驾车/测地线） | `searchPoi`、`drivingRoute`、`geodesicM`；QPS 节流+退避 |
 | `tools/baidu.ts` | 百度 Direction v2 跨城大交通 | `intercityRoute(from, to, prefer)` → 真实车次/航班号+时刻+票价；GCJ02 直传免转换 |

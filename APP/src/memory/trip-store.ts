@@ -3,6 +3,9 @@
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import type { EventV2 } from "./event-v2.ts";
+import { migrateTripV1toV2 } from "./migrate-v2.ts";
+import { syncProjection } from "./project-v1.ts";
 
 export const STAGES = ["explore", "planning", "preparing", "ready"] as const;
 export type Stage = typeof STAGES[number];
@@ -19,6 +22,8 @@ export interface Trip {
   nodes: Record<string, Node_>; edges: Record<string, Edge_>;
   events: Record<string, Event_>; checklist: Record<string, ChecklistItem_>;
   candidate_pool: Record<string, CandidateItem_>;
+  /** v2 事件树（0.4.1 起的事实源）；nodes/edges/events 是由它派生的 v1 投影（project-v1.ts） */
+  events_v2?: Record<string, EventV2>;
   /** 用户绕过对话的手动操作（如手动勾选清单），注入状态摘要让 LLM 知晓 */
   user_actions?: { ts: number; text: string }[];
 }
@@ -30,6 +35,7 @@ export function emptyTrip(): Trip {
     trip_id: nid("trip"), stage: "explore", days: 0, destination: [],
     slots: { destination: [], date_range: null, origin: null, budget_band: null, party: null, pace: null, interests: [], stay_pref: null },
     nodes: {}, edges: {}, events: {}, checklist: {}, candidate_pool: {},
+    events_v2: {},
     user_actions: [],
   };
 }
@@ -117,6 +123,16 @@ export class TripStore {
     if (existsSync(this.opsPath)) {
       this.applied = readFileSync(this.opsPath, "utf8").split("\n").filter(Boolean).map(l => JSON.parse(l));
     }
+    // v1 → v2 惰性迁移（SPEC/event-model-v2.md §9）：有 v1 数据但无 v2 树时触发；
+    // 随后统一重建 v1 投影，保证 nodes/edges/events 与 events_v2 单向一致
+    if (this.trip.events_v2 === undefined && (Object.keys(this.trip.events ?? {}).length || Object.keys(this.trip.nodes ?? {}).length)) {
+      const { events, warnings } = migrateTripV1toV2(this.trip);
+      this.trip.events_v2 = events;
+      if (warnings.length) console.warn(`[migrate-v2] trip=${this.trip.trip_id}: ${warnings.join("；")}`);
+      this.save();
+    }
+    this.trip.events_v2 ??= {};
+    syncProjection(this.trip);
   }
 
   save() { writeFileSync(join(this.dir, "trip.json"), JSON.stringify(this.trip, null, 2)); }

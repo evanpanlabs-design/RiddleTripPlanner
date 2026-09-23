@@ -21,7 +21,8 @@ export function bd09ToGcj02(lng: number, lat: number): [number, number] {
   return [z * Math.cos(theta), z * Math.sin(theta)];
 }
 
-async function baiduGet(path: string, params: Record<string, string>): Promise<any> {
+/** 共享 GET 封装（QPS 节流 + ak 注入 + status 校验）：baidu-place.ts 等百度系模块复用 */
+export async function baiduGet(path: string, params: Record<string, string>): Promise<any> {
   const ak = resolveBaiduWebKey();
   if (!ak) throw new Error("未配置百度服务端 AK（设置 → 百度地图，或环境变量 BAIDU_MAP_AK / BAIDU_WEB_SERVICE_AK）");
   const wait = MIN_INTERVAL - (Date.now() - lastCall);
