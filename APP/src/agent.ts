@@ -189,7 +189,7 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
     label: "生成/重写方案",
     description: `提交完整方案草案落图（v2 扁平事件列表，SPEC/event-model-v2.md §6）。
 事件分三类：poi（点：游览/住宿/场站，detail.role 标 lodging/terminal，默认 activity）、route（线：通勤段，detail.from/to 填两端事件的 tmp_id，detail.mode 写真实通勤方式——同城步行/骑行/公交/地铁/驾车，跨城火车/飞机/大巴）、aoi（面：景区，子事件用 parent_id 指它，AOI 不套 AOI，深度 ≤3）。
-硬性要求（V8 结构校验，违反直接打回重提）：同一天内相邻两个顶层活动事件（poi/aoi）之间必须有一个 route 事件连接，不允许只罗列活动而省略通勤环节。
+硬性要求（V8 结构校验，违反直接打回重提）：① 同一天内相邻两个顶层活动事件（poi/aoi）之间必须有 route 连接（若一端是景区，route 端点可填该景区内部的出入口子事件）；② 景区（aoi）内部同一天相邻的子活动之间同样要有 route（观光车/步行/索道等）。不允许只罗列活动而省略通勤环节。
 时间用 "HH:MM"（day_refs 标第几天，可跨日）；推断不了的留 null，绝不编造班次/票价/营业时间（系统会调真实 API 回填）。events 数组较大，工具参数请输出紧凑 JSON（无缩进无换行），note 控制在 20 字以内。
 示例：{"days":3,"events":[{"tmp_id":"e1","kind":"poi","name":"成都东站","day_refs":[1],"detail":{"role":"terminal"},"time_window":{"start":"07:30"}},{"tmp_id":"e2","kind":"route","name":"成都→九寨沟","day_refs":[1],"detail":{"mode":"大巴","from":"e1","to":"e3"}},{"tmp_id":"e3","kind":"aoi","name":"九寨沟","day_refs":[1,2,3]},{"tmp_id":"e4","kind":"poi","name":"则查洼沟","parent_id":"e3","seq":1,"day_refs":[2]}],"checklist":[...]}`,
     parameters: Type.Object({
@@ -229,15 +229,22 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
       }
       store.save(); // 落图后立即落盘：校验或系统异常崩溃不丢方案（校验失败路径 undo 会再纠正）
       const verify = await jev.d7Verify(planDesc(store.trip));
-      const fails = Object.keys(verify).filter(k => !k.endsWith("_prob") && verify[k] === "fail");
       const probs: Record<string, number> = {};
       for (const k of Object.keys(verify)) if (k.endsWith("_prob")) probs[k.replace(/_prob$/, "")] = verify[k];
+      const fails = Object.keys(verify).filter(k => !k.endsWith("_prob") && verify[k] === "fail");
+      // V8 进 D7（0.4.2）：嵌套感知链条完整校验并入统一校验报告（V1–V8 同一出口）。
+      // 草案期前置已查过一次（快速打回），此处对最终落图树复核——机械校验，置信记 1/0。
+      const v8 = checkChainCompleteness(store.trip.events_v2 ?? {});
+      probs.V8_chain_integrity = v8.length ? 0 : 1;
+      if (v8.length) fails.push("V8_chain_integrity");
       emit({ type: "jev", sub: "校验", fails, probs, pass: !fails.length });
       store.trip.stage = gateReport(store.trip).stage;
       store.save();
       if (fails.length) {
         store.undo();
-        return { content: [{ type: "text", text: `校验未通过（${fails.join(", ")}），请修复后重新提交。概率：${fails.map(f => `${f}=${verify[f + "_prob"].toFixed(2)}`).join(", ")}` }], details: { verify } };
+        const probStr = fails.map(f => `${f}=${(probs[f] ?? 0).toFixed(2)}`).join(", ");
+        const v8Str = v8.length ? `。链条缺失：${v8.map(e => e.message).join("；")}` : "";
+        return { content: [{ type: "text", text: `校验未通过（${fails.join(", ")}），请修复后重新提交完整草案。概率：${probStr}${v8Str}` }], details: { verify, v8 } };
       }
       // 落图校验通过：整树 draft → active（SPEC §3.1 status 语义），投影同步为 locked
       for (const ev of Object.values(store.trip.events_v2 ?? {})) if (ev.status === "draft") ev.status = "active";

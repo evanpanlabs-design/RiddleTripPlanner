@@ -75,6 +75,40 @@ if (broken.ok) {
   ok(v8.length === 1 && v8[0].code === "V8_CHAIN_BROKEN", "V8：缺 route 打回", JSON.stringify(v8));
 }
 
+// ---------- V8 嵌套感知（0.4.2）：端点指向 AOI 子事件 ≡ 指向 AOI；AOI 内部链条同规则 ----------
+console.log("== V8 嵌套感知 ==");
+const nested = assembleDraft({ days: 1, events: [
+  { tmp_id: "h", kind: "poi", name: "酒店", day_refs: [1], detail: { role: "lodging" }, time_window: { start: "08:00" } },
+  { tmp_id: "g", kind: "aoi", name: "景区", day_refs: [1] },
+  { tmp_id: "gate", kind: "poi", name: "景区大门", parent_id: "g", seq: 1, day_refs: [1], time_window: { start: "09:00" } },
+  { tmp_id: "r1", kind: "route", name: "酒店→大门", day_refs: [1], detail: { mode: "驾车", from: "h", to: "gate" } },
+] });
+ok(nested.ok, "嵌套草案组装成功", JSON.stringify(nested.ok ? [] : nested.errors));
+if (nested.ok) {
+  const v8 = checkChainCompleteness(nested.events);
+  ok(v8.length === 0, "V8：route 端点指向 AOI 子事件算连上顶层链条", JSON.stringify(v8));
+}
+const innerBroken = assembleDraft({ days: 1, events: [
+  { tmp_id: "g", kind: "aoi", name: "九寨沟", day_refs: [1] },
+  { tmp_id: "p1", kind: "poi", name: "则查洼沟", parent_id: "g", seq: 1, day_refs: [1], time_window: { start: "09:00" } },
+  { tmp_id: "p2", kind: "poi", name: "日则沟", parent_id: "g", seq: 2, day_refs: [1], time_window: { start: "13:00" } },
+] });
+ok(innerBroken.ok, "AOI 内部缺 route 草案组装成功");
+if (innerBroken.ok) {
+  const v8 = checkChainCompleteness(innerBroken.events);
+  ok(v8.length === 1 && v8[0].code === "V8_CHAIN_BROKEN" && v8[0].message.includes("九寨沟"), "V8：AOI 内部相邻活动缺 route 打回", JSON.stringify(v8));
+}
+const innerLinked = assembleDraft({ days: 1, events: [
+  { tmp_id: "g", kind: "aoi", name: "九寨沟", day_refs: [1] },
+  { tmp_id: "p1", kind: "poi", name: "则查洼沟", parent_id: "g", seq: 1, day_refs: [1], time_window: { start: "09:00" } },
+  { tmp_id: "r", kind: "route", name: "观光车", parent_id: "g", seq: 2, day_refs: [1], detail: { mode: "公交", from: "p1", to: "p2" } },
+  { tmp_id: "p2", kind: "poi", name: "日则沟", parent_id: "g", seq: 3, day_refs: [1], time_window: { start: "13:00" } },
+] });
+ok(innerLinked.ok, "AOI 内部含 route 草案组装成功");
+if (innerLinked.ok) {
+  ok(checkChainCompleteness(innerLinked.events).length === 0, "V8：AOI 内部有 route 通过");
+}
+
 // ---------- v1 → v2 迁移 + TripStore 惰性迁移 + 投影 ----------
 console.log("== 迁移与投影 ==");
 const v1: Trip = emptyTrip();

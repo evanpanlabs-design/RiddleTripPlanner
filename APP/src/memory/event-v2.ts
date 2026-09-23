@@ -305,33 +305,54 @@ function buildDetail(d: DraftEvent, idMap: Map<string, string>, errors: Assembly
   return { boundary: null, opening_detail: null, ticket: null, envelope_fallback: false, boundary_status: "pending" } satisfies AoiDetail;
 }
 
-// ---------------- V8 链条完整（SPEC §8，schema 层硬校验） ----------------
-/** 同日相邻顶层活动事件（poi/aoi，含 lodging/terminal）之间必须存在 route 连接。
+// ---------------- V8 链条完整（SPEC §8，schema 层硬校验，0.4.2 嵌套感知） ----------------
+/** id 及其全部后代（非 dropped）：端点指向 AOI 内部子事件 ≡ 指向该 AOI。 */
+function selfAndDescendants(events: Record<string, EventV2>, id: string): Set<string> {
+  const out = new Set<string>([id]);
+  const walk = (pid: string) => {
+    for (const k of childrenOf(events, pid)) { out.add(k.event_id); walk(k.event_id); }
+  };
+  walk(id);
+  return out;
+}
+
+/** 同日相邻活动事件（poi/aoi，含 lodging/terminal）之间必须存在 route 连接——嵌套感知：
+ * ① 顶层链条：route 端点落在 a/b 各自子树内即算连接（AOI 的出园段可嵌在 AOI 内，端点指其子事件）；
+ * ② AOI 内部链条：同一 AOI 下同日相邻的子活动之间同样必须有 route（景区内通勤/观光车/步行段）。
  * v2 把"走得通"从 prompt 约束升级为 schema 校验：漏了就是校验失败打回，不再工程兜底补边。
  * 跨日相邻（夜班火车）按 day_refs 任一共同日判断；无时间窗时按 seq 顺序。 */
 export function checkChainCompleteness(events: Record<string, EventV2>): AssemblyError[] {
   const errors: AssemblyError[] = [];
-  const top = childrenOf(events, null).filter(e => e.kind !== "route");
-  const routes = childrenOf(events, null).filter(isRoute);
-  const linked = (a: string, b: string) =>
-    routes.some(r => (r.detail.from_ref === a && r.detail.to_ref === b) || (r.detail.from_ref === b && r.detail.to_ref === a));
-
-  const days = [...new Set(top.flatMap(e => e.day_refs))].sort((a, b) => a - b);
-  for (const day of days) {
-    const dayEvents = top.filter(e => e.day_refs.includes(day))
-      .sort((x, y) => (toMin(x.time_window?.start) ?? 9999) - (toMin(y.time_window?.start) ?? 9999) || x.seq - y.seq);
-    for (let i = 0; i + 1 < dayEvents.length; i++) {
-      const a = dayEvents[i], b = dayEvents[i + 1];
-      if (a.event_id === b.event_id) continue;
-      // route 可能本身就是顶层（连接两个顶层活动）；嵌套在 aoi 内的通勤不影响顶层链条
-      if (!linked(a.event_id, b.event_id)) {
+  const routes = Object.values(events).filter(isRoute);
+  const linked = (a: string, b: string) => {
+    const da = selfAndDescendants(events, a), db = selfAndDescendants(events, b);
+    return routes.some(r =>
+      (da.has(r.detail.from_ref) && db.has(r.detail.to_ref)) || (db.has(r.detail.from_ref) && da.has(r.detail.to_ref)));
+  };
+  // 同一父级下按日分组检查相邻活动链条；scope 为空串=顶层，否则=AOI 名（用于报错文案）
+  const checkLevel = (kids: EventV2[], scope: string) => {
+    const acts = kids.filter(e => e.kind !== "route");
+    const days = [...new Set(acts.flatMap(e => e.day_refs))].sort((a, b) => a - b);
+    for (const day of days) {
+      const dayEvents = acts.filter(e => e.day_refs.includes(day))
+        .sort((x, y) => (toMin(x.time_window?.start) ?? 9999) - (toMin(y.time_window?.start) ?? 9999) || x.seq - y.seq);
+      for (let i = 0; i + 1 < dayEvents.length; i++) {
+        const a = dayEvents[i], b = dayEvents[i + 1];
+        if (a.event_id === b.event_id) continue;
+        if (linked(a.event_id, b.event_id)) continue;
         errors.push({
           code: "V8_CHAIN_BROKEN",
-          message: `Day${day}：「${a.name}」与「${b.name}」之间缺少 route 通勤事件——请补充一个 kind=route 的事件（mode 写明真实通勤方式）连接它们`,
+          message: scope
+            ? `Day${day}：景区「${scope}」内部「${a.name}」与「${b.name}」之间缺少 route 通勤段——景区内相邻活动也需要 route（观光车/步行/索道等）连接，detail.from/to 填这两个子事件的 tmp_id`
+            : `Day${day}：「${a.name}」与「${b.name}」之间缺少 route 通勤事件——请补充一个 kind=route 的事件（mode 写明真实通勤方式）连接它们；若其中一方是景区，端点也可填该景区内部的出入口子事件`,
           tmp_ids: [a.event_id, b.event_id],
         });
       }
     }
+  };
+  checkLevel(childrenOf(events, null), "");
+  for (const aoi of Object.values(events).filter(isAoi)) {
+    checkLevel(childrenOf(events, aoi.event_id), aoi.name);
   }
   return errors;
 }

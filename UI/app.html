@@ -918,7 +918,7 @@ function renderPending(){
 const INTENT_PLAIN = { I1:'提供参考材料', I2:'咨询/闲聊', I3:'声明旅行约束', I4:'修改方案', I5:'确认决定', I6:'汇报准备进度', I7:'补充事实信息', I8:'回滚或重来' };
 const SLOT_PLAIN = { destination:'目的地', date_range:'出行日期', origin:'出发地', budget_band:'预算', party:'同行人', pace:'节奏偏好', interests:'兴趣偏好', stay_pref:'住宿偏好', days:'天数' };
 const R_PLAIN = { R1:'只影响相邻安排', R2:'影响当天整体安排', R3:'影响前后多天' };
-const V_PLAIN = { V1:'时间衔接', V2:'空间可达', V3:'营业时间', V4:'活动归属', V5:'每日起止锚点', V6:'交通耗时', V7:'待办识别' };
+const V_PLAIN = { V1:'时间衔接', V2:'空间可达', V3:'营业时间', V4:'活动归属', V5:'每日起止锚点', V6:'交通耗时', V7:'待办识别', V8:'通勤链条完整' };
 const STAGE_PLAIN = { explore:'探索', planning:'方案规划', preparing:'行前准备', ready:'就绪' };
 const TOOL_PLAIN = { get_trip_state:'查看旅程状态', get_plan_desc:'查看方案描述', search_poi:'查询地点坐标', get_route:'查询通勤路线', update_slot:'更新旅行信息', apply_plan:'方案落图', confirm_progress:'确认准备进度', rollback:'回滚操作', ingest_material:'解析参考材料' };
 const OP_PLAIN = { apply_plan:'方案落图', confirm_progress:'更新准备进度', rollback:'回滚到之前的状态', checklist_toggle:'手动勾选清单', checklist_note:'补记清单内容' };
