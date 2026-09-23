@@ -25,7 +25,7 @@ Riddle 是**三系统**旅行规划 Copilot：**LLM 只生成**（对话/方案/
    ▼
 server.ts ──► 每项目一个 RiddleRuntime（agent.ts createRiddleAgent）
                  ├─ Agent（@earendil-works/pi-agent-core）── LLM（设置中心解析）
-                 ├─ JevClient（jev/client.ts）────────────── Jev HTTP API
+                 ├─ ResilientJudge（jev/resilient-judge.ts）─ Jev API，失败退级 LLM（llm-judge.ts）
                  ├─ TripStore（memory/trip-store.ts）─────── runs/<trip_id>/ 持久化
                  └─ Scheduler（scheduler/scheduler.ts）───── runs/<trip_id>/pending.json
 ```
@@ -36,6 +36,8 @@ server.ts ──► 每项目一个 RiddleRuntime（agent.ts createRiddleAgent�
 |---|---|---|
 | `agent.ts` | **装配核心**：SYSTEM prompt、7 个工具定义、Jev 三个注入点、applyDraft 落图 | `createRiddleAgent()`；`transformContext`（D1 意图+pending 消费）、`beforeToolCall`（槽位复核/D4 清单指代/D6 半径门禁）、`applyDraft()`（草案→图，地理解析+边补全） |
 | `jev/client.ts` | Jev HTTP 客户端封装 | `JevClient.ask(state, questions)` 批量判断；`d7Verify()` |
+| `jev/resilient-judge.ts` | **弹性判断器（Jev→LLM 退级）** | 继承 `JevClient.ask`：Jev 停用/无 key/请求失败→自动切 LLM 判断（60s 冷却避免反复白等超时），恢复自动切回；切换发 `jev` 引擎事件留痕 |
+| `jev/llm-judge.ts` | LLM 判断器（Jev 的退级替身） | 与 `JevClient.ask` 同接口：同 state/questions 输入、同 answers schema（noul/choice）输出；schema 清洗（非法值 fail-closed）；429 分钟级退避 |
 | `jev/questions.ts` | **全部判断问题与阈值定义**（判断系统的"法典"） | `TH` 阈值表（intentState 0.8 / slotAccept 0.6 / checklistMatch 0.7…）；`INTENTS` + `STATE_CHANGE_INTENTS`；`d1IntentQuestions`、`d4ChecklistMatchQuestions`、`d6RadiusQuestion`、`d7VerifyQuestions`、`pendingConsumeQuestion` |
 | `memory/trip-store.ts` | 领域模型 + event sourcing 存储 | `Trip` 图（nodes/edges/events/checklist/candidate_pool + **events_v2**，0.4.1 起 v2 树为事实源）；`gateReport()`（D3 阶段门槛机械检查）；`TripStore`（ops.jsonl 日志/快照/undo，构造时 v1→v2 惰性迁移） |
 | `memory/event-v2.ts` | **v2 事件 Schema**（poi/route/aoi 判别联合 + 嵌套规则 + provenance） | `assembleDraft()`（扁平草案→树，结构校验打回）；`checkChainCompleteness()`（V8 链条完整硬校验）；`walkTree/childrenOf` |

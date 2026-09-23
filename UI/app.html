@@ -496,9 +496,11 @@
       </div>
       <div class="mo-sec">
         <div class="mo-sec-h"><h3>Jev 判断引擎</h3><span><span class="mo-result" id="testJevMsg"></span><button class="mo-test" id="testJev" type="button">测试连接</button></span></div>
-        <div class="mo-desc">意图分类 / 槽位复核 / 半径判定 / 语义校验，全部由 Jev 做出。测试会发一次最小判断请求。</div>
+        <div class="mo-desc">意图分类 / 槽位复核 / 半径判定 / 语义校验，全部由 Jev 做出。Jev 不可用（网络断/超时/未配置）时自动退级到 LLM 按同一判断 schema 承接，恢复后自动切回。测试会发一次最小判断请求。</div>
+        <div class="mo-row"><label>启用 Jev（停用则判断全部由 LLM 承接）</label><input id="setJevEnabled" type="checkbox" style="flex:0 0 auto;width:auto"></div>
         <div class="mo-row"><label>API Key</label><input id="setJevKey" type="password" autocomplete="off" spellcheck="false"></div>
         <div class="mo-row"><label>Base URL（置空回落默认）</label><input id="setJevBase" type="text" spellcheck="false"></div>
+        <div class="mo-desc" id="jevEngineNote"></div>
       </div>
       <div class="mo-sec">
         <div class="mo-sec-h"><h3>高德地图</h3><span><span class="mo-result" id="testAmapMsg"></span><button class="mo-test" id="testAmap" type="button">测试连接</button></span></div>
@@ -971,6 +973,8 @@ function jevLine(ev){
   }else if(ev.sub==='挂起消费'){
     feedLine('judge','待确认', ev.consumed?'你的回答解决了之前挂起的问题 → 继续执行':'还没等到挂起问题的答案 → 继续等',
       `「${esc(String(ev.question).slice(0,60))}」 · 判定置信 ${Number(ev.prob).toFixed(2)}`, ev.ts);
+  }else if(ev.sub==='引擎'){
+    feedLine('judge','判断引擎', ev.engine==='llm'?'Jev 不可用 → 由 LLM 承接判断':'Jev 恢复 → 切回 Jev 判断', esc(ev.note||''), ev.ts);
   }
 }
 
@@ -1029,6 +1033,7 @@ function jevBrief(ev){
   if(ev.sub==='半径判定') return `⚖ 影响评估 ${ev.autoApply?'自动执行':'需确认'}`;
   if(ev.sub==='校验') return `⚖ 落地检查 ${ev.pass?'通过':'未通过'}`;
   if(ev.sub==='挂起消费') return `⚖ 待确认 ${ev.consumed?'已解决':'继续等'}`;
+  if(ev.sub==='引擎') return `⚖ 引擎 → ${ev.engine==='llm'?'LLM 退级':'Jev'}`;
   return `⚖ ${esc(ev.sub||'')}`;
 }
 function toggleConsoleIfUseful(){ /* 保持克制：不自动展开 console */ }
@@ -1271,6 +1276,10 @@ function fillSettingsForm(){
   $('setTemp').value = SET.llm.temperature ?? '';
   $('setJevKey').value = ''; $('setJevKey').placeholder = keyPh(SET.jev.key);
   $('setJevBase').value = SET.jev.baseUrl || ''; $('setJevBase').placeholder = SET.jev.effectiveBaseUrl;
+  $('setJevEnabled').checked = SET.jev.enabled !== false;
+  $('jevEngineNote').textContent = SET.jev.enabled === false
+    ? '当前状态：Jev 已停用 → 判断由 LLM 承接。'
+    : (SET.jev.key?.set ? '当前状态：Jev 已启用；调用失败时自动退级到 LLM（60s 冷却，恢复后自动切回）。' : '当前状态：Jev 已启用但未配置 Key → 判断由 LLM 承接。');
   $('setAmapWeb').value = ''; $('setAmapWeb').placeholder = keyPh(SET.amap.web);
   $('setAmapJs').value = ''; $('setAmapJs').placeholder = keyPh(SET.amap.jsapi);
   $('setAmapCode').value = ''; $('setAmapCode').placeholder = keyPh(SET.amap.code);
@@ -1310,7 +1319,7 @@ $('setSave').onclick = async ()=>{
   if(wd && (isNaN(+wd) || +wd<=0 || +wd>3600)){ $('setMsg').textContent = '看门狗超时需为 1–3600 秒'; return; }
   const body = {
     llm: { provider: pid, temperature: t===''?null:+t, conf: { [pid]: { baseUrl: $('setLlmBase').value.trim(), model: $('setLlmModel').value.trim() } } },
-    jev: { baseUrl: $('setJevBase').value.trim() },
+    jev: { baseUrl: $('setJevBase').value.trim(), enabled: $('setJevEnabled').checked },
     amap: {}, baidu: {},
     map: { style: $('setMapStyle').value==='__custom' ? ($('setMapStyleId').value.trim() || 'light') : $('setMapStyle').value },
     agent: { watchdogSeconds: wd===''?null:+wd },

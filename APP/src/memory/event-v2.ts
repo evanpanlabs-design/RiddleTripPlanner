@@ -211,7 +211,10 @@ export function assembleDraft(draft: DraftV2): AssemblyResult {
     if (ev.parent_id) {
       const parent = events[ev.parent_id];
       if (!nestingAllowed(parent.kind, ev.kind)) {
-        errors.push({ code: "BAD_NESTING", message: `嵌套非法：${parent.kind}「${parent.name}」不能包含 ${ev.kind}「${ev.name}」` });
+        const fix = parent.kind === "poi"
+          ? `修复：若「${parent.name}」是景区/区域，请改为 kind=aoi 再容纳子事件；否则把「${ev.name}」拍平为顶层事件（去掉 parent_id）`
+          : `修复：AOI 不能套 AOI，把「${ev.name}」拍平或改挂到顶层`;
+        errors.push({ code: "BAD_NESTING", message: `嵌套非法：${parent.kind}「${parent.name}」不能包含 ${ev.kind}「${ev.name}」。${fix}` });
       }
       if (depthOf(events, ev) > MAX_DEPTH) {
         errors.push({ code: "TOO_DEEP", message: `嵌套深度超过 ${MAX_DEPTH}：「${ev.name}」——请拍平为同级 seq` });
@@ -220,8 +223,8 @@ export function assembleDraft(draft: DraftV2): AssemblyResult {
     if (isRoute(ev)) {
       for (const ref of [ev.detail.from_ref, ev.detail.to_ref]) {
         const target = events[ref];
-        if (!target) errors.push({ code: "DANGLING_ENDPOINT", message: `route「${ev.name}」端点 ${ref} 不存在` });
-        else if (target.kind === "route") errors.push({ code: "BAD_ENDPOINT", message: `route「${ev.name}」的端点不能是 route（${target.name}）` });
+        if (!target) errors.push({ code: "DANGLING_ENDPOINT", message: `route「${ev.name}」端点 ${ref} 不存在。修复：detail.from/to 必须填同批提交事件里某个 poi/aoi 的 tmp_id（不是事件名）` });
+        else if (target.kind === "route") errors.push({ code: "BAD_ENDPOINT", message: `route「${ev.name}」的端点不能是 route（${target.name}）。修复：端点改为该 route 两端poi/aoi 的 tmp_id；如需表达中转，把中转段作为子 route 挂在父 route 下` });
       }
       // route 挂在 route 下时，端点可指向父 route 之外的事件（中转段），不额外约束
     }
@@ -287,8 +290,8 @@ function buildDetail(d: DraftEvent, idMap: Map<string, string>, errors: Assembly
   }
   if (d.kind === "route") {
     const from = raw.from ?? raw.from_ref, to = raw.to ?? raw.to_ref;
-    if (!from || !idMap.has(from)) errors.push({ code: "DANGLING_ENDPOINT", message: `route「${d.name}」缺少有效 from 端点`, tmp_ids: [d.tmp_id] });
-    if (!to || !idMap.has(to)) errors.push({ code: "DANGLING_ENDPOINT", message: `route「${d.name}」缺少有效 to 端点`, tmp_ids: [d.tmp_id] });
+    if (!from || !idMap.has(from)) errors.push({ code: "DANGLING_ENDPOINT", message: `route「${d.name}」缺少有效 from 端点（填同批某 poi/aoi 的 tmp_id）`, tmp_ids: [d.tmp_id] });
+    if (!to || !idMap.has(to)) errors.push({ code: "DANGLING_ENDPOINT", message: `route「${d.name}」缺少有效 to 端点（填同批某 poi/aoi 的 tmp_id）`, tmp_ids: [d.tmp_id] });
     return {
       mode: String(raw.mode ?? "驾车"),
       from_ref: idMap.get(from) ?? String(from ?? ""),

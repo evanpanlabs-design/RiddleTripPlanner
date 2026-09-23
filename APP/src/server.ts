@@ -296,6 +296,7 @@ const server = createServer(async (req, res) => {
       if (!body[sec] || typeof body[sec] !== "object") continue;
       patch[sec] = {};
       for (const [k, v] of Object.entries<any>(body[sec])) {
+        if (sec === "jev" && k === "enabled" && typeof v === "boolean") { patch[sec][k] = v; continue; }  // Jev 启停开关
         if (typeof v !== "string") continue;
         if (k === "baseUrl") patch[sec][k] = v.trim();          // baseUrl 可置空回落默认
         else if (v.trim()) patch[sec][k] = v.trim();            // key 类只增改

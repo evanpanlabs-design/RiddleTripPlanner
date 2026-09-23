@@ -21,7 +21,7 @@ export type MapProvider = "amap" | "baidu";
 
 export interface AppSettings {
   llm: { provider: LlmProvider; temperature: number | null; conf: Partial<Record<LlmProvider, ProviderConf>> };
-  jev: { apiKey: string; baseUrl: string };
+  jev: { enabled: boolean; apiKey: string; baseUrl: string };   // enabled=false → 判断全部退级到 LLM
   amap: { webServiceKey: string; jsapiKey: string; securityJsCode: string };
   baidu: { webServiceKey: string; jsapiKey: string };   // 预留：下一版地图迁移用
   map: { active: MapProvider; style: string };            // 实际启用哪个地图数据源（互斥）；style = 内置预设名或高德自定义样式 ID
@@ -52,13 +52,13 @@ export const LLM_PRESETS: Record<LlmProvider, LlmPreset> = {
   claude: { label: "Claude（Anthropic）", api: "anthropic-messages", provider: "anthropic", baseUrl: "https://api.anthropic.com", model: "claude-sonnet-4-5", envKey: "ANTHROPIC_API_KEY" },
   chatgpt: { label: "ChatGPT（OpenAI）", api: "openai-completions", provider: "openai", baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini", envKey: "OPENAI_API_KEY" },
   glm: { label: "GLM（智谱）", api: "openai-completions", provider: "zhipu", baseUrl: "https://open.bigmodel.cn/api/paas/v4", model: "glm-4.5-flash", envKey: "GLM_API_KEY" },
-  friday: { label: "Friday（美团 AIGC）", api: "anthropic-messages", provider: "anthropic", baseUrl: "https://aigc.sankuai.com/v1/anthropic", model: "glm-52-meituan", envKey: "ANTHROPIC_AUTH_TOKEN", bearer: true, maxTokens: 32768 },
+  friday: { label: "Friday（美团 AIGC）", api: "anthropic-messages", provider: "anthropic", baseUrl: "https://aigc.sankuai.com/v1/anthropic", model: "glm-52-meituan", envKey: "ANTHROPIC_AUTH_TOKEN", bearer: true, maxTokens: 65536 },
   custom: { label: "自定义（OpenAI 兼容）", api: "openai-completions", provider: "custom", baseUrl: "", model: "", envKey: "LLM_API_KEY", envBase: "LLM_BASE_URL", envModel: "LLM_MODEL" },
 };
 
 const BLANK: AppSettings = {
   llm: { provider: "deepseek", temperature: null, conf: {} },
-  jev: { apiKey: "", baseUrl: "" },
+  jev: { enabled: true, apiKey: "", baseUrl: "" },
   amap: { webServiceKey: "", jsapiKey: "", securityJsCode: "" },
   baidu: { webServiceKey: "", jsapiKey: "" },
   map: { active: "amap", style: "light" },
@@ -109,6 +109,7 @@ export function resolveLlm() {
 export function resolveJev() {
   const j = loadSettings().jev;
   return {
+    enabled: j.enabled !== false,   // 缺省启用；显式 false 才停用
     apiKey: j.apiKey || process.env.JEV_API_KEY || "",
     baseUrl: (j.baseUrl || process.env.JEV_BASE_URL || "https://api.typesafe.ai/v1").replace(/\/$/, ""),
   };
@@ -165,6 +166,7 @@ export function publicSettings(lab01Fallback: { key: string; securityJsCode: str
       effective: { label: llm.label, baseUrl: llm.baseUrl, model: llm.model, api: llm.api, keySet: !!llm.apiKey },
     },
     jev: {
+      enabled: s.jev.enabled !== false,
       baseUrl: s.jev.baseUrl, effectiveBaseUrl: resolveJev().baseUrl,
       key: secretInfo(s.jev.apiKey, process.env.JEV_API_KEY ?? ""),
     },

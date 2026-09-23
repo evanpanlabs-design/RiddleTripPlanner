@@ -11,6 +11,7 @@ import type { Model } from "@earendil-works/pi-ai";
 import { Type } from "@sinclair/typebox";
 import { join } from "node:path";
 import { JevClient } from "./jev/client.ts";
+import { ResilientJudge } from "./jev/resilient-judge.ts";
 import { TH, d4ChecklistMatchQuestions } from "./jev/questions.ts";
 import { TripStore, tripSummary, planDesc, gateReport, destList, type Trip } from "./memory/trip-store.ts";
 import { assembleDraft, checkChainCompleteness, isAoi, isPoi, isRoute, childrenOf, type DraftV2, type EventV2, type RouteEvent, type AoiEvent, type PoiEvent } from "./memory/event-v2.ts";
@@ -60,10 +61,11 @@ export function buildModel(): Model<any> {
   } as Model<any>;
 }
 
-/** streamSimple 包装：把设置里的 temperature 注入每次流式调用（未设置则交给 provider 默认） */
+/** streamSimple 包装：把设置里的 temperature 注入每次流式调用（未设置则交给 provider 默认）。
+ * maxRetries=8：429/5xx 由 pi-ai 按 provider 策略退避重试（指数 0.5→8s/次，累计 ~40s，跨过 Friday 的分钟级限流窗；比整轮 stop=error 好） */
 const streamWithSettings: any = (model: any, context: any, options: any) => {
   const t = resolveLlm().temperature;
-  return (streamSimple as any)(model, context, { ...(options ?? {}), ...(t != null ? { temperature: t } : {}) });
+  return (streamSimple as any)(model, context, { maxRetries: 8, maxRetryDelayMs: 65_000, ...(options ?? {}), ...(t != null ? { temperature: t } : {}) });
 };
 
 /** UI/Server 可订阅的运行时事件（Jev 判断、pending 队列、地理解析、阶段门） */
@@ -90,12 +92,14 @@ function textOf(msg: any): string {
 
 export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
   const store = existingStore ?? new TripStore();
-  const jev = new JevClient();
+  const jev = new ResilientJudge();
   const scheduler = new Scheduler(join(store.dir, "pending.json"));
 
   const listeners: ((ev: RiddleEvent) => void)[] = [];
   const emit = (ev: RiddleEvent) => { for (const fn of listeners) { try { fn(ev); } catch { /* listener 异常不阻断 loop */ } } };
   const onEvent = (fn: (ev: RiddleEvent) => void) => { listeners.push(fn); };
+  // 判断引擎切换（Jev ↔ LLM 退级）对 UI 可见
+  jev.onEngine = (engine, reason) => emit({ type: "jev", sub: "引擎", engine, note: reason });
 
   const summary = () => tripSummary(store.trip);
 
@@ -186,7 +190,7 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
     description: `提交完整方案草案落图（v2 扁平事件列表，SPEC/event-model-v2.md §6）。
 事件分三类：poi（点：游览/住宿/场站，detail.role 标 lodging/terminal，默认 activity）、route（线：通勤段，detail.from/to 填两端事件的 tmp_id，detail.mode 写真实通勤方式——同城步行/骑行/公交/地铁/驾车，跨城火车/飞机/大巴）、aoi（面：景区，子事件用 parent_id 指它，AOI 不套 AOI，深度 ≤3）。
 硬性要求（V8 结构校验，违反直接打回重提）：同一天内相邻两个顶层活动事件（poi/aoi）之间必须有一个 route 事件连接，不允许只罗列活动而省略通勤环节。
-时间用 "HH:MM"（day_refs 标第几天，可跨日）；推断不了的留 null，绝不编造班次/票价/营业时间（系统会调真实 API 回填）。
+时间用 "HH:MM"（day_refs 标第几天，可跨日）；推断不了的留 null，绝不编造班次/票价/营业时间（系统会调真实 API 回填）。events 数组较大，工具参数请输出紧凑 JSON（无缩进无换行），note 控制在 20 字以内。
 示例：{"days":3,"events":[{"tmp_id":"e1","kind":"poi","name":"成都东站","day_refs":[1],"detail":{"role":"terminal"},"time_window":{"start":"07:30"}},{"tmp_id":"e2","kind":"route","name":"成都→九寨沟","day_refs":[1],"detail":{"mode":"大巴","from":"e1","to":"e3"}},{"tmp_id":"e3","kind":"aoi","name":"九寨沟","day_refs":[1,2,3]},{"tmp_id":"e4","kind":"poi","name":"则查洼沟","parent_id":"e3","seq":1,"day_refs":[2]}],"checklist":[...]}`,
     parameters: Type.Object({
       days: Type.Number(),
@@ -215,7 +219,7 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
       // 结构校验（组装 + V8 链条完整）在落图前：失败直接打回，不产生任何状态变更
       const pre = await applyDraftV2(store, draft as DraftV2, emit, /*dryRun*/ true);
       if (!pre.ok) {
-        return { content: [{ type: "text", text: `草案结构校验未通过，未落图。请修复后重新提交：\n${pre.errors.map(e => `- [${e.code}] ${e.message}`).join("\n")}` }], details: { errors: pre.errors } };
+        return { content: [{ type: "text", text: `草案结构校验未通过，未落图。你必须在本轮内按下列修复指引修正后，重新调用 apply_plan 提交完整草案（不要只回复文字，也不要放弃提交）：\n${pre.errors.map(e => `- [${e.code}] ${e.message}`).join("\n")}` }], details: { errors: pre.errors } };
       }
       store.snapshot("apply_plan");
       const applied = await applyDraftV2(store, draft as DraftV2, emit);

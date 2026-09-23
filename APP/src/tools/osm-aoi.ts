@@ -95,15 +95,36 @@ export function convexHull(pts: [number, number][]): [number, number][] {
   return [...lower.slice(0, -1), ...upper.slice(0, -1)];
 }
 
-// ---------------- Nominatim：名称 → relation id ----------------
-async function findRelationId(name: string, signal: AbortSignal): Promise<number | null> {
-  const url = `${NOMINATIM}/search?${new URLSearchParams({ q: name, format: "json", limit: "5" })}`;
+// ---------------- Nominatim：名称 → relation id + 可选几何 ----------------
+interface NominatimHit { id: number; ring: [number, number][] | null }
+/** 一次查询同时拿 osm id 和边界几何（polygon_geojson=1，polygon_threshold≈55m 服务端预抽稀）。
+ * 几何可能缺失（Nominatim 对部分 relation 不出面），此时返回 id 交给 Overpass 链。 */
+async function findRelation(name: string, signal: AbortSignal): Promise<NominatimHit | null> {
+  const url = `${NOMINATIM}/search?${new URLSearchParams({
+    q: name, format: "json", limit: "5",
+    polygon_geojson: "1", polygon_threshold: "0.0005", // ≈55m，服务端预抽稀控制响应体积
+  })}`;
   const resp = await fetch(url, { headers: { "user-agent": UA }, signal });
   if (!resp.ok) return null;
   const rows: any[] = await resp.json();
   const rel = rows.find(r => r.osm_type === "relation") ?? rows.find(r => r.osm_type === "way");
-  // way 也可取边界（小景区常是单 way），统一按 way/relation 取几何
-  return rel ? +rel.osm_id * (rel.osm_type === "way" ? -1 : 1) : null; // 负数 = way（编码进返回值）
+  if (!rel) return null;
+  // way 也可取边界（小景区常是单 way）；负数 = way（编码进返回值）
+  const id = +rel.osm_id * (rel.osm_type === "way" ? -1 : 1);
+  return { id, ring: largestRing(rel.geojson) };
+}
+
+/** GeoJSON Polygon/MultiPolygon → 最大外环（[lon,lat]），无几何返回 null */
+function largestRing(geojson: any): [number, number][] | null {
+  if (!geojson?.type || !Array.isArray(geojson.coordinates)) return null;
+  const polys: [number, number][][][] = geojson.type === "Polygon" ? [geojson.coordinates]
+    : geojson.type === "MultiPolygon" ? geojson.coordinates : [];
+  let best: [number, number][] | null = null;
+  for (const poly of polys) {
+    const outer = poly?.[0];
+    if (Array.isArray(outer) && outer.length >= 3 && (!best || outer.length > best.length)) best = outer;
+  }
+  return best;
 }
 
 // ---------------- Overpass：relation/way → outer 几何 ----------------
@@ -178,16 +199,17 @@ function writeCache(id: number, polygon: [number, number][]) {
   } catch { /* 缓存失败不致命 */ }
 }
 
-/** 主入口：按名称获取 AOI 真边界（GCJ02、抽稀 ≤200 点、带缓存）。超时/失败返回 null（调用方降级包络）。 */
+/** 主入口：按名称获取 AOI 真边界（GCJ02、抽稀 ≤200 点、带缓存）。超时/失败返回 null（调用方降级包络）。
+ * 获取链：Nominatim（一次查询同时拿 id + polygon_geojson 几何）→ 几何缺失时 Overpass 镜像轮询。 */
 export async function fetchAoiBoundary(name: string): Promise<AoiBoundary | null> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), BUDGET_MS);
   try {
-    const id = await findRelationId(name, ctrl.signal);
-    if (id == null) return null;
-    const cached = readCache(id);
+    const hit = await findRelation(name, ctrl.signal);
+    if (!hit) return null;
+    const cached = readCache(hit.id);
     if (cached) return cached;
-    const ring = await fetchOverpass(id, ctrl.signal);
+    const ring = hit.ring ?? await fetchOverpass(hit.id, ctrl.signal); // Nominatim 无几何才走 Overpass
     if (!ring) return null;
     let polygon = ring.map(([lng, lat]) => wgs84ToGcj02(lng, lat));
     if (polygon.length > MAX_POINTS) polygon = douglasPeucker(polygon);
@@ -195,8 +217,8 @@ export async function fetchAoiBoundary(name: string): Promise<AoiBoundary | null
       const step = Math.ceil(polygon.length / MAX_POINTS);
       polygon = polygon.filter((_, i) => i % step === 0);
     }
-    writeCache(id, polygon);
-    return { polygon, osm_relation_id: Math.abs(id), attribution: OSM_ATTRIBUTION };
+    writeCache(hit.id, polygon);
+    return { polygon, osm_relation_id: Math.abs(hit.id), attribution: OSM_ATTRIBUTION };
   } catch {
     return null;
   } finally {

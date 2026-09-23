@@ -66,14 +66,16 @@ export async function testLlm(ov: any = {}): Promise<TestResult> {
   }
 }
 
-/** Jev：发一次最小判断请求（验证 key + 服务在线；成本可忽略） */
+/** Jev：发一次最小判断请求（验证 key + 服务在线；成本可忽略）。
+ * 已停用时直接提示走 LLM 承接；测试失败时附带"运行时将退级到 LLM"说明（与运行时行为一致）。 */
 export async function testJev(ov: any = {}): Promise<TestResult> {
   const t0 = Date.now();
   try {
     const cfg = resolveJev();
+    if (!cfg.enabled) return ok(0, "Jev 已停用 → 判断全部由 LLM 承接（无需测试）");
     const apiKey = str(ov.apiKey) || cfg.apiKey;
     const baseUrl = (str(ov.baseUrl) || cfg.baseUrl).replace(/\/$/, "");
-    if (!apiKey) return bad(0, "未配置 API Key");
+    if (!apiKey) return ok(0, "未配置 API Key → 判断将由 LLM 承接");
     const { resp, ms } = await timedFetch(`${baseUrl}/systemone`, {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
@@ -83,11 +85,13 @@ export async function testJev(ov: any = {}): Promise<TestResult> {
         questions: { echo: { type: "noul", instructions: "这是一次连通性测试，无需判断任何内容，直接返回 1。" } },
       }),
     });
-    if (!resp.ok) return bad(ms, `HTTP ${resp.status}：${(await resp.text()).slice(0, 140)}`);
+    if (!resp.ok) return bad(ms, `HTTP ${resp.status}：${(await resp.text()).slice(0, 140)}。配置可保存，运行时将自动退级到 LLM 判断`);
     const d: any = await resp.json();
     return ok(ms, d?.answers ? "判断引擎在线（完成一次最小判断）" : "已连通，但响应缺少 answers 字段");
   } catch (e: any) {
-    return errMsg(e, Date.now() - t0);
+    const r = errMsg(e, Date.now() - t0);
+    if (!r.ok) r.error += "。配置可保存，运行时将自动退级到 LLM 判断";
+    return r;
   }
 }
 

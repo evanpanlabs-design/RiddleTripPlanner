@@ -11,6 +11,9 @@
     "test:d4": "tsx scripts/test-d4.ts",
     "test:baidu": "tsx scripts/test-baidu.ts",
     "test:v2": "tsx scripts/test-v2.ts",
+    "test:place": "tsx scripts/test-place.ts",
+    "test:judge": "tsx scripts/test-llm-judge.ts",
+    "test:fallback": "tsx scripts/test-fallback.ts",
     "typecheck": "tsc"
   },
   "keywords": [
