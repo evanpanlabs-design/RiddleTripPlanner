@@ -2,11 +2,10 @@
  * 覆盖：assembleDraft（结构校验/时间窗拓宽）、V8 链条完整、v1→v2 迁移、v2→v1 投影、
  *      convexHull / douglasPeucker / wgs84ToGcj02。
  * 用法：npm run test:v2 */
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { assembleDraft, checkChainCompleteness, walkTree, type DraftV2, type EventV2, type RouteDetail, type PoiDetail } from "../src/memory/event-v2.ts";
 import { migrateTripV1toV2 } from "../src/memory/migrate-v2.ts";
-import { projectV1, syncProjection } from "../src/memory/project-v1.ts";
 import { TripStore, emptyTrip, type Trip } from "../src/memory/trip-store.ts";
 import { convexHull, douglasPeucker, wgs84ToGcj02 } from "../src/tools/osm-aoi.ts";
 
@@ -109,7 +108,7 @@ if (innerLinked.ok) {
   ok(checkChainCompleteness(innerLinked.events).length === 0, "V8：AOI 内部有 route 通过");
 }
 
-// ---------- v1 → v2 迁移 + TripStore 惰性迁移 + 投影 ----------
+// ---------- v1 → v2 迁移 + TripStore 惰性迁移（0.4.3 起投影桥退役） ----------
 console.log("== 迁移与投影 ==");
 const v1: Trip = emptyTrip();
 v1.days = 2;
@@ -138,17 +137,6 @@ ok(migRoute?.time_window?.source === "llm_inference", "v1 inferred → llm_infer
 const lodging = Object.values(mig.events).find(e => e.name === "全季酒店");
 ok(lodging?.status === "draft", "tentative → draft");
 
-// 投影
-v1.events_v2 = mig.events;
-syncProjection(v1);
-ok(Object.keys(v1.nodes).length === 2 && Object.keys(v1.edges).length === 1 && Object.keys(v1.events).length === 3, "投影重建 v1 三表");
-ok(Object.values(v1.events).find(e => e.kind === "lodging")?.status === "tentative", "投影 draft → tentative");
-ok(Object.values(v1.events).find(e => e.kind === "visit")?.status === "locked", "投影 active → locked");
-ok(Object.values(v1.nodes).find(n => n.name === "全季酒店")?.anchor === "lodging", "投影保留 anchor 角色");
-const projTransit = Object.values(v1.events).find(e => e.kind === "transit");
-ok(projTransit?.time_window?.source === "inferred", "投影 llm_inference → inferred");
-ok(Object.keys(v1.events).every(id => id.startsWith("evt_")), "投影事件与 v2 共用 event_id");
-
 // TripStore 惰性迁移（用 runs/ 下的临时目录，测完即删）
 const tmp = join(import.meta.dirname, "../runs/_test_v2_tmp");
 mkdirSync(tmp, { recursive: true });
@@ -156,7 +144,9 @@ try {
   const legacy: Trip = { ...JSON.parse(JSON.stringify(v1)), events_v2: undefined };
   const st = new TripStore(legacy, tmp);
   ok(Object.keys(st.trip.events_v2 ?? {}).length === 3, "TripStore 构造触发惰性迁移");
-  ok(Object.keys(st.trip.nodes).length === 2, "迁移后投影自动同步");
+  ok(st.trip.nodes === undefined && st.trip.events === undefined, "0.4.3：迁移后 legacy v1 三表从内存剥离");
+  const persisted = JSON.parse(readFileSync(join(st.dir, "trip.json"), "utf8"));
+  ok(persisted.nodes === undefined && persisted.events === undefined && Object.keys(persisted.events_v2 ?? {}).length === 3, "0.4.3：落盘只存 v2 事实源");
 } finally { rmSync(tmp, { recursive: true, force: true }); }
 
 // ---------- 几何与坐标 ----------

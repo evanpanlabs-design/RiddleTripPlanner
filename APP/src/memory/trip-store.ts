@@ -4,8 +4,8 @@ import { appendFileSync, mkdirSync, readFileSync, writeFileSync, existsSync } fr
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { EventV2 } from "./event-v2.ts";
+import { isAoi, isPoi, isRoute, walkTree } from "./event-v2.ts";
 import { migrateTripV1toV2 } from "./migrate-v2.ts";
-import { syncProjection } from "./project-v1.ts";
 
 export const STAGES = ["explore", "planning", "preparing", "ready"] as const;
 export type Stage = typeof STAGES[number];
@@ -19,13 +19,15 @@ export interface CandidateItem_ { item_id: string; name: string; source_material
 export interface Trip {
   trip_id: string; stage: Stage; days: number; destination: string[];
   slots: Record<string, unknown>;
-  nodes: Record<string, Node_>; edges: Record<string, Edge_>;
-  events: Record<string, Event_>; checklist: Record<string, ChecklistItem_>;
+  checklist: Record<string, ChecklistItem_>;
   candidate_pool: Record<string, CandidateItem_>;
-  /** v2 事件树（0.4.1 起的事实源）；nodes/edges/events 是由它派生的 v1 投影（project-v1.ts） */
+  /** v2 事件树（0.4.1 起的事实源；0.4.3 起所有消费方直读它） */
   events_v2?: Record<string, EventV2>;
   /** 用户绕过对话的手动操作（如手动勾选清单），注入状态摘要让 LLM 知晓 */
   user_actions?: { ts: number; text: string }[];
+  /** legacy v1 扁平结构：仅存于旧 trip.json/ops 快照，作为惰性迁移的输入；0.4.3 起不再生成/维护/下发 */
+  nodes?: Record<string, Node_>; edges?: Record<string, Edge_>;
+  events?: Record<string, Event_>;
 }
 
 const nid = (p: string) => `${p}_${randomUUID().slice(0, 8)}`;
@@ -34,7 +36,7 @@ export function emptyTrip(): Trip {
   return {
     trip_id: nid("trip"), stage: "explore", days: 0, destination: [],
     slots: { destination: [], date_range: null, origin: null, budget_band: null, party: null, pace: null, interests: [], stay_pref: null },
-    nodes: {}, edges: {}, events: {}, checklist: {}, candidate_pool: {},
+    checklist: {}, candidate_pool: {},
     events_v2: {},
     user_actions: [],
   };
@@ -56,8 +58,9 @@ export function gateReport(t: Trip): { stage: Stage; missing: string[] } {
   let stage: Stage = "explore";
   if (!missing.length) {
     stage = "planning";
-    const tentatives = Object.values(t.events).filter(e => e.status === "tentative");
-    if (Object.keys(t.events).length && !tentatives.length) {
+    const live = Object.values(t.events_v2 ?? {}).filter(e => e.status !== "dropped");
+    const drafts = live.filter(e => e.status === "draft");
+    if (live.length && !drafts.length) {
       stage = "preparing";
       const items = Object.values(t.checklist);
       if (items.length && items.every(c => c.done)) stage = "ready";
@@ -66,12 +69,13 @@ export function gateReport(t: Trip): { stage: Stage; missing: string[] } {
   return { stage, missing };
 }
 
-/** 给 Jev/LLM 的紧凑状态摘要 */
+/** 给 Jev/LLM 的紧凑状态摘要（0.4.3 起直读 v2 树） */
 export function tripSummary(t: Trip) {
+  const tree = walkTree(t.events_v2 ?? {});
   return {
     stage: t.stage, days: t.days, slots: t.slots,
-    nodes: Object.values(t.nodes).map(n => ({ id: n.node_id, name: n.name, anchor: n.anchor })),
-    events: Object.values(t.events).map(e => ({ id: e.event_id, kind: e.kind, days: e.day_refs, tw: e.time_window, status: e.status, note: e.note.slice(0, 80) })),
+    nodes: tree.filter(e => isPoi(e) || isAoi(e)).map(e => ({ id: e.event_id, name: e.name, role: isPoi(e) ? e.detail.role : "aoi", parent: e.parent_id })),
+    events: tree.map(e => ({ id: e.event_id, kind: e.kind, name: e.name, days: e.day_refs, tw: e.time_window, status: e.status, parent: e.parent_id, note: (e.note ?? "").slice(0, 80) })),
     candidate_pool: Object.values(t.candidate_pool).map(c => ({ id: c.item_id, name: c.name, status: c.status })),
     checklist: Object.values(t.checklist).map(c => ({ id: c.item_id, title: c.title, done: c.done, note: c.note ?? null })),  // 实体级勾选：LLM 依此提 item_id；note 是用户补记的完成细节
     checklist_open: Object.values(t.checklist).filter(c => !c.done).length,
@@ -85,21 +89,23 @@ export function recordUserAction(t: Trip, text: string) {
   t.user_actions = [...(t.user_actions ?? []), { ts: Date.now(), text }].slice(-8);
 }
 
-/** D7 审阅用自然语言方案描述（含 checklist 状态，避免 V7 误报） */
+/** D7 审阅用自然语言方案描述（含 checklist 状态，避免 V7 误报；0.4.3 起直读 v2 树，嵌套事件带父级前缀） */
 export function planDesc(t: Trip): string {
+  const events = t.events_v2 ?? {};
+  const nameOf = (id: string) => events[id]?.name ?? "?";
   const lines = [`共${t.days}天，目的地：${destList(t).join("、") || "未定"}`];
   for (let day = 1; day <= t.days; day++) {
-    const evs = Object.values(t.events).filter(e => e.day_refs.includes(day))
-      .sort((a, b) => (a.time_window?.start ?? "99").localeCompare(b.time_window?.start ?? "99"));
+    const evs = walkTree(events).filter(e => e.day_refs.includes(day))
+      .sort((a, b) => (a.time_window?.start ?? "99").localeCompare(b.time_window?.start ?? "99") || a.seq - b.seq);
     const parts = evs.map(e => {
       const span = e.time_window ? `${e.time_window.start ?? "?"}–${e.time_window.end ?? "?"}` : "时间未定";
-      let name = e.note;
-      if (e.anchor_kind === "node" && t.nodes[e.anchor_ref]) name = t.nodes[e.anchor_ref].name;
-      if (e.anchor_kind === "edge" && t.edges[e.anchor_ref]) {
-        const ed = t.edges[e.anchor_ref];
-        name = `${t.nodes[ed.from_id]?.name ?? "?"}→${t.nodes[ed.to_id]?.name ?? "?"}(${ed.mode})`;
-      }
-      return `${span} ${e.kind}:${name}`;
+      const scope = e.parent_id && events[e.parent_id] ? `${nameOf(e.parent_id)}/` : "";
+      let label: string;
+      if (isRoute(e)) label = `transit:${scope}${nameOf(e.detail.from_ref)}→${nameOf(e.detail.to_ref)}(${e.detail.mode})`;
+      else if (isAoi(e)) label = `aoi:${e.name}`;
+      else if (isPoi(e)) label = `${e.detail.role === "lodging" ? "lodging" : e.detail.role === "terminal" ? "terminal" : "visit"}:${scope}${e.name}`;
+      else label = `visit:${scope}${e.name}`;
+      return `${span} ${label}`;
     });
     lines.push(`Day${day}: ${parts.join("；")}`);
   }
@@ -123,19 +129,23 @@ export class TripStore {
     if (existsSync(this.opsPath)) {
       this.applied = readFileSync(this.opsPath, "utf8").split("\n").filter(Boolean).map(l => JSON.parse(l));
     }
-    // v1 → v2 惰性迁移（SPEC/event-model-v2.md §9）：有 v1 数据但无 v2 树时触发；
-    // 随后统一重建 v1 投影，保证 nodes/edges/events 与 events_v2 单向一致
+    // v1 → v2 惰性迁移（SPEC/event-model-v2.md §9）：有 v1 数据但无 v2 树时触发。
+    // 0.4.3 起 v1 投影桥退役：迁移后丢掉 legacy 三表，v2 树成为内存与落盘的唯一事实源。
     if (this.trip.events_v2 === undefined && (Object.keys(this.trip.events ?? {}).length || Object.keys(this.trip.nodes ?? {}).length)) {
       const { events, warnings } = migrateTripV1toV2(this.trip);
       this.trip.events_v2 = events;
       if (warnings.length) console.warn(`[migrate-v2] trip=${this.trip.trip_id}: ${warnings.join("；")}`);
-      this.save();
     }
     this.trip.events_v2 ??= {};
-    syncProjection(this.trip);
+    delete this.trip.nodes; delete this.trip.edges; delete this.trip.events;
+    this.save();
   }
 
-  save() { writeFileSync(join(this.dir, "trip.json"), JSON.stringify(this.trip, null, 2)); }
+  save() {
+    // 防御：undo 恢复的历史快照可能带 legacy v1 三表——落盘前一律剥掉，磁盘只存 v2 事实源
+    const { nodes: _n, edges: _e, events: _v, ...persist } = this.trip;
+    writeFileSync(join(this.dir, "trip.json"), JSON.stringify(persist, null, 2));
+  }
 
   /** 只读访问已应用操作日志（供 UI 操作日志面板） */
   get ops(): readonly any[] { return this.applied; }

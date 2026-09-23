@@ -24,7 +24,7 @@ async function main() {
     const reply = typeof last?.content === "string" ? last.content
       : (last?.content ?? []).map((c: any) => c.text ?? "").join("") || "(无回复)";
     console.log(`Riddle: ${reply.slice(0, 300)}`);
-    console.log(`阶段: ${store.trip.stage} | events: ${Object.keys(store.trip.events).length} | pending: ${scheduler.size}`);
+    console.log(`阶段: ${store.trip.stage} | events: ${Object.keys(store.trip.events_v2 ?? {}).length} | pending: ${scheduler.size}`);
   }
 
   console.log("\n--- 最终方案 ---");

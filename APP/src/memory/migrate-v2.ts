@@ -86,7 +86,7 @@ export function migrateTripV1toV2(trip: Trip): MigrationResult {
     };
     const ev: EventV2 = {
       event_id: eid(), kind: "route",
-      name: attached?.note || `${trip.nodes[e.from_id]?.name ?? "?"}→${trip.nodes[e.to_id]?.name ?? "?"}`,
+      name: attached?.note || `${trip.nodes?.[e.from_id]?.name ?? "?"}→${trip.nodes?.[e.to_id]?.name ?? "?"}`,
       parent_id: null, seq: 0,
       day_refs: attached?.day_refs ?? [],
       time_window: twOf(attached),

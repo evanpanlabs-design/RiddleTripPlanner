@@ -196,9 +196,11 @@ function resolveProject(url: URL): Project | undefined {
 
 function statePayload(p: Project) {
   const rt = getRt(p);
+  // 0.4.3：v1 投影桥退役——payload 只下发 v2 事实源，legacy nodes/edges/events 一律剥离
+  const { nodes: _n, edges: _e, events: _v, ...tripV2 } = rt.store.trip;
   return {
     project: p.meta,
-    trip: rt.store.trip,
+    trip: tripV2,
     pending: rt.scheduler.list(),
     ops: rt.store.ops.map((r: any) => ({ seq: r.seq, ts: r.ts, op: r.op, undo_kind: r.undo?.kind ?? null, payload: r.payload })),
     conv: p.conv,

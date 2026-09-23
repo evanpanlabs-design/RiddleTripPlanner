@@ -43,7 +43,7 @@ async function main() {
     const reply = typeof last?.content === "string" ? last.content
       : (last?.content ?? []).map((c: any) => c.text ?? "").join("");
     console.log(`Riddle: ${reply.slice(0, 400)}`);
-    console.log(`[${((Date.now() - t0) / 1000).toFixed(0)}s] 阶段=${store.trip.stage} events=${Object.keys(store.trip.events).length} pending=${scheduler.size}`);
+    console.log(`[${((Date.now() - t0) / 1000).toFixed(0)}s] 阶段=${store.trip.stage} events=${Object.keys(store.trip.events_v2 ?? {}).length} pending=${scheduler.size}`);
     transcript.push({ round: title, input: text, reply, stage: store.trip.stage, pending: scheduler.size });
   }
 

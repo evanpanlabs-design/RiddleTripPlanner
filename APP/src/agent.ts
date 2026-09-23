@@ -15,7 +15,6 @@ import { ResilientJudge } from "./jev/resilient-judge.ts";
 import { TH, d4ChecklistMatchQuestions } from "./jev/questions.ts";
 import { TripStore, tripSummary, planDesc, gateReport, destList, type Trip } from "./memory/trip-store.ts";
 import { assembleDraft, checkChainCompleteness, isAoi, isPoi, isRoute, childrenOf, type DraftV2, type EventV2, type RouteEvent, type AoiEvent, type PoiEvent } from "./memory/event-v2.ts";
-import { syncProjection } from "./memory/project-v1.ts";
 import { enrichFromBaidu } from "./tools/baidu-place.ts";
 import { fetchAoiBoundary, convexHull } from "./tools/osm-aoi.ts";
 import { Scheduler, type PendingQuestion } from "./scheduler/scheduler.ts";
@@ -249,9 +248,8 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
         const v8Str = v8.length ? `。链条缺失：${v8.map(e => e.message).join("；")}` : "";
         return { content: [{ type: "text", text: `校验未通过（${fails.join(", ")}），请修复后重新提交完整草案。概率：${probStr}${v8Str}` }], details: { verify, v8 } };
       }
-      // 落图校验通过：整树 draft → active（SPEC §3.1 status 语义），投影同步为 locked
+      // 落图校验通过：整树 draft → active（SPEC §3.1 status 语义）
       for (const ev of Object.values(store.trip.events_v2 ?? {})) if (ev.status === "draft") ev.status = "active";
-      syncProjection(store.trip);
       store.save();
       const { warnings, gaps, aoiAsync } = applied;
       const warnNote = warnings.length ? `。提示：${warnings.join("；")}` : "";
@@ -283,10 +281,9 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
       store.snapshot("confirm_progress");
       let locked = 0;
       const done: string[] = [], skipped: string[] = [];
-      // 锁定走 v2 事实源：draft → active，投影同步为 v1 的 locked（SPEC §3.1 status 语义）
+      // 锁定走 v2 事实源：draft → active（SPEC §3.1 status 语义）
       if (lock) {
         for (const e of Object.values(store.trip.events_v2 ?? {})) if (e.status === "draft") { e.status = "active"; locked++; }
-        syncProjection(store.trip);
       }
       for (const itemId of requested) {
         const c = store.trip.checklist[itemId];
@@ -384,7 +381,7 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
         return { block: true, reason: `该槽位已有值 ${JSON.stringify(cur)}，覆盖需用户显式确认。已向用户发出确认问题（pending）。请勿重试本工具——直接结束本轮，向用户复述这个确认问题，等用户回答后再恢复执行。` };
       }
     }
-    if (name === "apply_plan" && Object.keys(store.trip.events).length > 0 && !approvals.delete("d6:apply_plan")) {
+    if (name === "apply_plan" && Object.keys(store.trip.events_v2 ?? {}).length > 0 && !approvals.delete("d6:apply_plan")) {
       // 已有方案时的 apply_plan = 变更（I4），先过 D6 半径判定（有放行令牌则跳过）
       const lastUser = messages.filter((m: any) => m.role === "user").map((m: any) => textOf(m)).pop() ?? "";
       const d6 = await jev.d6Radius(lastUser, summary());
@@ -648,7 +645,6 @@ async function applyDraftV2(store: TripStore, draft: DraftV2, emit?: (ev: Riddle
         cur.detail.boundary_status = "done"; // 包络即终态（OSM 未拿到真边界）
         emit?.({ type: "aoi", sub: "boundary", name: aoi.name, source: "envelope" });
       }
-      syncProjection(store.trip);
       store.save();
       emit?.({ type: "state_dirty" }); // SSE 推前端重绘（热替换）
     })();
@@ -663,7 +659,6 @@ async function applyDraftV2(store: TripStore, draft: DraftV2, emit?: (ev: Riddle
   trip.events_v2 = events;
   trip.checklist = checklist;
   if (!trip.days) trip.days = draft.days || 0;
-  syncProjection(trip); // v2 → v1 投影（UI/D7 继续消费，0.4.3 再切）
   return { ok: true, warnings: asm.warnings, gaps, aoiAsync };
 }
 

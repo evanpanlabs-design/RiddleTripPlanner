@@ -164,6 +164,12 @@
   .tl-ev .body{color:#4B4844}
   .tl-ev.transit .body{color:var(--ink2)}
   .anchor-star{font-size:11px;color:var(--ink);margin-right:3px}
+  /* 0.4.3 v2 树嵌套渲染：AOI 容器 + 子事件缩进 */
+  .tl-aoi{border:1px solid var(--hair2);border-radius:8px;margin:6px 0 6px 20px;padding:4px 10px 4px 0;background:var(--paper2,#FBFAF8)}
+  .tl-aoi-head{display:flex;gap:8px;align-items:baseline;padding:4px 0 2px 10px;font-size:12px;color:var(--ink);font-weight:600}
+  .tl-aoi-head .t{font-family:var(--mono);font-size:11px;color:var(--ink3);font-weight:400}
+  .tl-ev.tl-nested{padding-left:10px}
+  .ev-meta{font-family:var(--mono);font-size:10px;color:var(--ink3)}
   .fill{border-bottom:1px dotted var(--ink3);padding:0 1px}
 
   /* ============ 右区 ============ */
@@ -192,6 +198,7 @@
   .mk-poi{width:9px;height:9px;border-radius:50%;border:none}
   .mk-lodging{width:11px;height:11px;background:var(--paper)}
   .mk-terminal{width:10px;height:10px;transform:rotate(45deg);border:none}
+  .mk-aoi{width:10px;height:10px;border-radius:2px;border-style:dashed}
   .amap-marker-label{border:1px solid var(--hair)!important;background:#FFF!important;border-radius:6px!important;
     font-family:var(--sans);font-size:11px;color:var(--ink);padding:2px 7px}
   .map-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--ink3);font-size:12px;line-height:2.2;text-align:center;z-index:4;pointer-events:none}
@@ -610,22 +617,42 @@ function renderHeader(){
   flag.innerHTML = `<span class="dot"></span> ${n} 待确认`;
 }
 
+/* ---- v2 事件树读取（0.4.3：v1 投影桥退役，前台直读 events_v2 事实源） ---- */
+const v2All = () => S?.trip?.events_v2 || {};
+const v2Live = () => Object.values(v2All()).filter(e=>e.status!=='dropped');
+const v2Kids = id => v2Live().filter(e=>e.parent_id===id).sort((a,b)=>a.seq-b.seq);
+const v2Name = id => v2All()[id]?.name ?? '?';
+/* aoi 坐标取首个有 geo 的后代 poi（地图占位，与旧投影规则一致） */
+function v2Geo(e){
+  if(!e) return null;
+  if(e.kind==='poi') return e.detail?.geo || null;
+  const q=[e];
+  while(q.length){
+    for(const c of v2Kids(q.shift().event_id)){
+      if(c.kind==='poi'&&c.detail?.geo) return c.detail.geo;
+      q.push(c);
+    }
+  }
+  return null;
+}
 function dayEvents(d){
-  return Object.values(S.trip.events).filter(e=>e.day_refs.includes(d))
-    .sort((a,b)=>(a.time_window?.start??'99').localeCompare(b.time_window?.start??'99'));
+  return v2Live().filter(e=>!e.parent_id && e.day_refs?.includes(d))
+    .sort((a,b)=>(a.time_window?.start??'99').localeCompare(b.time_window?.start??'99') || a.seq-b.seq);
 }
 function evText(e){
-  const t = S.trip;
-  if(e.anchor_kind==='node' && t.nodes[e.anchor_ref]){
-    const n = t.nodes[e.anchor_ref];
-    return (n.anchor==='lodging'?'<span class="anchor-star">★</span>':'') + esc(n.name) + (e.note?` · ${esc(e.note)}`:'');
+  if(e.kind==='route'){
+    const d = e.detail||{};
+    const dist = d.distance_m ? ` · ${(d.distance_m/1000).toFixed(0)}km` : (d.data_source==='empty'?' · <u class="fill">待回填</u>':'');
+    return `${esc(v2Name(d.from_ref))} → ${esc(v2Name(d.to_ref))}（${esc(d.mode||'通勤')}）${dist}`;
   }
-  if(e.anchor_kind==='edge' && t.edges[e.anchor_ref]){
-    const ed = t.edges[e.anchor_ref];
-    const dist = ed.distance_m ? ` · ${(ed.distance_m/1000).toFixed(0)}km` : (ed.data_source==='empty'?' · <u class="fill">待回填</u>':'');
-    return `${esc(t.nodes[ed.from_id]?.name??'?')} → ${esc(t.nodes[ed.to_id]?.name??'?')}（${esc(ed.mode)}）${dist}`;
+  const star = e.kind==='poi'&&e.detail?.role==='lodging' ? '<span class="anchor-star">★</span>' : '';
+  const bits = [];
+  if(e.kind==='poi'){
+    if(e.detail?.price?.amount!=null) bits.push(`¥${e.detail.price.amount}`);
+    if(e.detail?.rating?.score!=null) bits.push(`评分${e.detail.rating.score}`);
   }
-  return esc(e.note || e.kind);
+  if(e.kind==='aoi'&&e.detail?.ticket?.amount!=null) bits.push(`¥${e.detail.ticket.amount}`);
+  return star + esc(e.name) + (bits.length?` <span class="ev-meta">${bits.join(' · ')}</span>`:'') + (e.note?` · ${esc(e.note)}`:'');
 }
 function renderRail(){
   const days = S.trip.days || 0;
@@ -634,20 +661,33 @@ function renderRail(){
 }
 function renderTimeline(){
   const days = S.trip.days || 0;
-  const total = Object.keys(S.trip.events).length;
+  const total = v2Live().length;
   $('tlTitle').textContent = days ? `时间线 · ${days} 天 ${total} 个行程点` : '时间线 · 未落图';
   let html = '';
+  const row = (e, nested)=>{
+    const tw = e.time_window;
+    const isLodging = e.kind==='poi' && e.detail?.role==='lodging';
+    const t = tw?.start ? `${tw.start}–${tw.end??'?'}` : (isLodging?'晚':'时间未定');
+    return `<div class="tl-ev ${e.kind==='route'?'transit':''} ${nested?'tl-nested':''}"><span class="t">${esc(t)}</span><span class="bar"></span><span class="body">${evText(e)}</span></div>`;
+  };
   for(let d=1; d<=days; d++){
-    const evs = dayEvents(d);
-    const names = evs.map(e=>e.anchor_kind==='node'?S.trip.nodes[e.anchor_ref]?.name:null).filter(Boolean);
-    const sum = names.length ? `${names[0]}${names.length>1?' → '+names[names.length-1]:''}` : '';
+    const tops = dayEvents(d);
+    const acts = tops.filter(e=>e.kind!=='route');
+    const sum = acts.length ? `${acts[0].name}${acts.length>1?' → '+acts[acts.length-1].name:''}` : '';
     html += `<div class="tl-day"><div class="tl-day-head"><span class="tl-day-num">D${d}</span><span class="tl-day-sum">${esc(sum)}</span></div>`;
-    html += evs.map(e=>{
-      const tw = e.time_window;
-      const t = tw?.start ? `${tw.start}–${tw.end??'?'}` : (e.kind==='lodging'?'晚':'时间未定');
-      const transit = e.anchor_kind==='edge' || e.kind==='transit';
-      return `<div class="tl-ev ${transit?'transit':''}"><span class="t">${esc(t)}</span><span class="bar"></span><span class="body">${evText(e)}</span></div>`;
-    }).join('');
+    for(const e of tops){
+      // AOI 以嵌套容器渲染：当天有子事件则展开子链，否则按普通行呈现
+      if(e.kind==='aoi'){
+        const kids = v2Kids(e.event_id).filter(k=>k.day_refs?.includes(d))
+          .sort((a,b)=>(a.time_window?.start??'99').localeCompare(b.time_window?.start??'99') || a.seq-b.seq);
+        if(kids.length){
+          html += `<div class="tl-aoi"><div class="tl-aoi-head">◱ ${esc(e.name)}${e.detail?.boundary_status==='failed'?' <span class="fill">边界待确认</span>':''}</div>`
+            + kids.map(k=>row(k,true)).join('') + '</div>';
+          continue;
+        }
+      }
+      html += row(e,false);
+    }
     html += '</div>';
   }
   $('tlDays').innerHTML = html || '<div class="empty-hint">方案生成后按天排在这里。</div>';
@@ -738,16 +778,37 @@ function setDetail(name,kind,kvs){
   $('detailBody').innerHTML=Object.entries(kvs).map(([k,v])=>
     `<div class="kv"><span class="k">${k}</span><span class="v ${/坐标|数据|POI/.test(k)?'mono':''}">${v}</span></div>`).join('');
 }
-function selectNode(id){
-  const n = S.trip.nodes[id]; if(!n) return;
-  const refs = Object.values(S.trip.events).filter(e=>e.anchor_kind==='node'&&e.anchor_ref===id)
-    .map(e=>'D'+e.day_refs.join('/D')).join(' · ');
-  setDetail(esc(n.name), n.anchor==='lodging'?'住宿锚点 · LODGING':n.anchor==='terminal'?'场站锚点 · TERMINAL':'点位 · POI', {
-    锚点: esc(n.anchor),
-    坐标: n.geo ? `${n.geo.lng.toFixed(5)}, ${n.geo.lat.toFixed(5)}` : '<span class="fill">待回填</span>',
-    高德POI: esc(n.amap_poi_id || '—'),
-    类别: esc((n.category_tags||[]).filter(Boolean).slice(0,2).join(' / ') || '—'),
-    被引用: esc(refs || '—'),
+/* 详情面板：消费 v2 事件（poi/aoi/route 三类）——评分/价格/营业时段是 0.4.1 抓回、0.4.3 首次上前台的字段 */
+function selectEvent(id){
+  const e = v2All()[id]; if(!e) return;
+  const d = e.detail || {};
+  const days = (e.day_refs||[]).length ? 'D'+e.day_refs.join('/D') : '—';
+  if(e.kind==='route'){
+    setDetail(esc(`${v2Name(d.from_ref)} → ${v2Name(d.to_ref)}`), '通勤段 · ROUTE', {
+      方式: esc(d.mode || '—'),
+      里程: d.distance_m ? `${(d.distance_m/1000).toFixed(1)} km` : '<span class="fill">待回填</span>',
+      耗时: d.duration_s ? `约 ${fmtDur(d.duration_s)}` : '—',
+      数据源: esc(srcLabel(d.data_source)),
+      行程: esc(days),
+    });
+    return;
+  }
+  const role = e.kind==='poi' ? d.role : null;
+  const geo = v2Geo(e);
+  const refs = v2Live().filter(x=>x.kind==='route' && (x.detail?.from_ref===id || x.detail?.to_ref===id)).length;
+  const opening = d.opening_detail?.text || (d.opening_detail?.periods?.length ? `${d.opening_detail.periods.length} 个开放时段（百度）` : null);
+  const price = d.price?.amount!=null ? `¥${d.price.amount}${d.price.desc?`（${esc(d.price.desc)}）`:''}`
+    : (d.ticket?.amount!=null ? `¥${d.ticket.amount}${d.ticket.desc?`（${esc(d.ticket.desc)}）`:''}` : '—');
+  setDetail(esc(e.name), e.kind==='aoi'?'景区 · AOI':role==='lodging'?'住宿锚点 · LODGING':role==='terminal'?'场站锚点 · TERMINAL':'点位 · POI', {
+    角色: esc(e.kind==='aoi' ? 'aoi' : (role || '—')),
+    坐标: geo ? `${geo.lng.toFixed(5)}, ${geo.lat.toFixed(5)}` : '<span class="fill">待回填</span>',
+    高德POI: esc(d.poi_ref?.amap_poi_id || '—'),
+    类别: esc((d.category_tags||[]).filter(Boolean).slice(0,2).join(' / ') || '—'),
+    评分: d.rating?.score!=null ? `${d.rating.score}${d.rating.votes?`（${d.rating.votes} 条评价）`:''}` : '—',
+    价格: price,
+    营业: esc(opening || '—'),
+    行程: esc(days),
+    被通勤引用: esc(String(refs)),
   });
 }
 
@@ -814,21 +875,36 @@ function renderMap(){
   tipHide();
   const t = S.trip;
   map.clearMap(); overlays = [];
-  const nodes = Object.values(t.nodes).filter(n=>n.geo);
-  $('mapEmpty').style.display = nodes.length ? 'none' : 'flex';
-  $('mapTitle').textContent = nodes.length ? (t.destination?.join(' · ') || '已落图') : '未落图';
-  $('mapStats').textContent = `${Object.keys(t.nodes).length} NODES · ${Object.keys(t.edges).length} EDGES · DATA: AMAP+BAIDU LIVE`;
-  // 边
-  for(const e of Object.values(t.edges)){
-    const a = t.nodes[e.from_id]?.geo, b = t.nodes[e.to_id]?.geo;
+  const live = v2Live();
+  const spots = live.filter(e=>e.kind!=='route').map(e=>({e, geo:v2Geo(e)})).filter(x=>x.geo);
+  const routes = live.filter(e=>e.kind==='route');
+  $('mapEmpty').style.display = spots.length ? 'none' : 'flex';
+  $('mapTitle').textContent = spots.length ? (t.destination?.join(' · ') || '已落图') : '未落图';
+  $('mapStats').textContent = `${spots.length} NODES · ${routes.length} EDGES · DATA: AMAP+BAIDU LIVE`;
+  // AOI 面（0.4.3 首次上地图）：真实边界实线，包络兜底虚线（SPEC §7 envelope_fallback 语义）
+  for(const e of live.filter(e=>e.kind==='aoi')){
+    const poly = e.detail?.boundary?.polygon;
+    if(!Array.isArray(poly) || poly.length < 3) continue;
+    const pg = new AMap.Polygon({
+      path: poly.map(p=>[p[0],p[1]]),
+      strokeColor: '#B03A2E', strokeWeight: 1.5, strokeOpacity: 0.9,
+      strokeStyle: e.detail?.envelope_fallback ? 'dashed' : 'solid',
+      fillColor: '#B03A2E', fillOpacity: 0.06,
+    });
+    map.add(pg); overlays.push(pg);
+  }
+  // 边（route 事件；端点可以是 aoi，坐标取其首个后代 geo）
+  for(const e of routes){
+    const d = e.detail || {};
+    const a = v2Geo(v2All()[d.from_ref]), b = v2Geo(v2All()[d.to_ref]);
     if(!a || !b) continue;
-    const color = edgeColor(e);
+    const color = edgeColor(d);
     const solid = !!color;
     /* 有真实路径用真实路径（amap_* / baidu_transit geometry），否则起讫直线；跨城段无真实几何时画贝塞尔弧线 */
-    let path = (Array.isArray(e.geometry) && e.geometry.length > 1)
-      ? e.geometry.map(p=>[p[0],p[1]])
+    let path = (Array.isArray(d.geometry) && d.geometry.length > 1)
+      ? d.geometry.map(p=>[p[0],p[1]])
       : [[a.lng,a.lat],[b.lng,b.lat]];
-    if(path.length <= 2 && INTERCITY_MODE.test(e.mode || '')) path = arcPath(a, b);
+    if(path.length <= 2 && INTERCITY_MODE.test(d.mode || '')) path = arcPath(a, b);
     const line = new AMap.Polyline({
       path,
       strokeColor: solid ? color : '#9B9A97',
@@ -839,15 +915,16 @@ function renderMap(){
     });
     map.add(line); overlays.push(line);
     line.on('mouseover', ev=>{
-      tipShow(`<b>${esc(t.nodes[e.from_id]?.name??'?')} → ${esc(t.nodes[e.to_id]?.name??'?')}</b><br>${esc(e.mode||'通勤')}${e.distance_m?` · ${(e.distance_m/1000).toFixed(1)}km`:''}${e.duration_s?` · 约${fmtDur(e.duration_s)}`:''}<br><span class="src">${srcLabel(e.data_source)}</span>`);
+      tipShow(`<b>${esc(v2Name(d.from_ref))} → ${esc(v2Name(d.to_ref))}</b><br>${esc(d.mode||'通勤')}${d.distance_m?` · ${(d.distance_m/1000).toFixed(1)}km`:''}${d.duration_s?` · 约${fmtDur(d.duration_s)}`:''}<br><span class="src">${srcLabel(d.data_source)}</span>`);
       tipMove(ev);
     });
     line.on('mousemove', tipMove);
     line.on('mouseout', tipHide);
-    if(e.distance_m){
+    line.on('click', ()=>selectEvent(e.event_id));
+    if(d.distance_m){
       const mid = path[Math.floor(path.length/2)];
       const txt = new AMap.Text({
-        text: `${(e.distance_m/1000).toFixed(0)}km`,
+        text: `${(d.distance_m/1000).toFixed(0)}km`,
         position: mid,
         style: { 'background-color':'#FFFFFF', 'border':'1px solid #E9E9E7', 'font-size':'11px',
                  'font-family':'Menlo,monospace', 'color':'#73716C', 'padding':'1px 5px' },
@@ -855,22 +932,25 @@ function renderMap(){
       map.add(txt); overlays.push(txt);
     }
   }
-  // 节点
-  for(const n of nodes){
-    const cls = n.anchor==='lodging' ? 'mk mk-lodging' : n.anchor==='terminal' ? 'mk mk-terminal' : 'mk mk-poi';
+  // 节点（poi + aoi 占位）
+  for(const {e, geo} of spots){
+    const role = e.kind==='poi' ? e.detail?.role : null;
+    const cls = e.kind==='aoi' ? 'mk mk-aoi' : role==='lodging' ? 'mk mk-lodging' : role==='terminal' ? 'mk mk-terminal' : 'mk mk-poi';
     const m = new AMap.Marker({
-      position: [n.geo.lng, n.geo.lat],
+      position: [geo.lng, geo.lat],
       content: `<div class="${cls}"></div>`,
       offset: new AMap.Pixel(-6,-6),
-      label: { content: esc(n.name), direction: 'right' },
+      label: { content: esc(e.name), direction: 'right' },
     });
-    m.on('click', ()=>selectNode(n.node_id));
+    m.on('click', ()=>selectEvent(e.event_id));
     m.on('mouseover', ev=>{
-      const evs = Object.values(t.events).filter(x=>x.anchor_kind==='node' && x.anchor_ref===n.node_id)
+      const sched = [e, ...v2Kids(e.event_id)].filter(x=>x.day_refs?.length)
         .sort((a,b)=>(a.day_refs?.[0]??99)-(b.day_refs?.[0]??99));
-      const rows = evs.slice(0,4).map(x=>`D${x.day_refs?.[0]??'?'} ${x.time_window?.start??''}${x.note?` · ${esc(x.note)}`:''}`).join('<br>');
-      const tag = n.anchor==='lodging'?'住宿锚点':n.anchor==='terminal'?'场站锚点':'点位';
-      tipShow(`<b>${esc(n.name)}</b>${n.city?` <span class="src">${esc(n.city)}</span>`:''}<br><span class="src">${tag}${n.category_tags?.length?' · '+esc(n.category_tags.slice(0,2).join('/')):''}</span>${rows?`<br>${rows}`:''}`);
+      const rows = sched.slice(0,4).map(x=>`D${x.day_refs?.[0]??'?'} ${x.time_window?.start??''}${x.note?` · ${esc(x.note)}`:''}`).join('<br>');
+      const d = e.detail || {};
+      const tag = e.kind==='aoi'?'景区':role==='lodging'?'住宿锚点':role==='terminal'?'场站锚点':'点位';
+      const tags = e.kind==='poi' ? (d.category_tags||[]) : [];
+      tipShow(`<b>${esc(e.name)}</b>${d.city?` <span class="src">${esc(d.city)}</span>`:''}<br><span class="src">${tag}${tags.length?' · '+esc(tags.slice(0,2).join('/')):''}</span>${rows?`<br>${rows}`:''}`);
       tipMove(ev);
     });
     m.on('mouseout', tipHide);
@@ -878,14 +958,14 @@ function renderMap(){
   }
   // 视野：出发地（origin）节点不参与取景——跨城行程聚焦目的地群，航线自然指出画外
   const origin = S.trip.slots?.origin;
-  const fitNodes = nodes.length > 3 && origin ? nodes.filter(n=>n.name !== origin) : nodes;
+  const fitSpots = spots.length > 3 && origin ? spots.filter(x=>x.e.name !== origin) : spots;
   const fitTargets = overlays.filter(o=>{
     if(!o.getPosition) return false;
     const p = o.getPosition();
-    return fitNodes.some(n=>Math.abs(n.geo.lng-p.lng)<1e-6 && Math.abs(n.geo.lat-p.lat)<1e-6);
+    return fitSpots.some(x=>Math.abs(x.geo.lng-p.lng)<1e-6 && Math.abs(x.geo.lat-p.lat)<1e-6);
   });
   if(fitTargets.length) map.setFitView(fitTargets, false, [80,80,80,80]);
-  else if(nodes.length) map.setFitView(null, false, [70,70,70,70]);
+  else if(spots.length) map.setFitView(null, false, [70,70,70,70]);
 }
 
 /* ================= console ================= */
@@ -963,7 +1043,7 @@ function renderStatus(){
   const t = S.trip;
   const ck = Object.values(t.checklist);
   $('cbStage').textContent = t.stage;
-  $('cbEvents').textContent = Object.keys(t.events).length;
+  $('cbEvents').textContent = v2Live().length;
   $('cbCk').textContent = `${ck.filter(c=>c.done).length}/${ck.length}`;
   $('cbPool').textContent = Object.keys(t.candidate_pool).length;
 }
