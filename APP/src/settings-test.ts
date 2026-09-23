@@ -38,6 +38,18 @@ export async function testLlm(ov: any = {}): Promise<TestResult> {
     if (!apiKey) return bad(0, "未配置 API Key");
     if (!baseUrl) return bad(0, "未配置 Base URL（自定义服务商必填）");
     if (preset.api === "anthropic-messages") {
+      // Bearer 渠道（如 Friday/美团 AIGC 网关）：没有 /v1/models 列表接口、且只认 Authorization 头。
+      // 发一条 max_tokens=1 的最小消息做真实探测（成本 ≈ 1 token；429 则说明限流但鉴权已通过）
+      if (preset.bearer) {
+        const { resp, ms } = await timedFetch(`${baseUrl}/v1/messages`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${apiKey}`, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
+          body: JSON.stringify({ model, max_tokens: 1, messages: [{ role: "user", content: "ping" }] }),
+        });
+        if (resp.status === 429) return ok(ms, `${preset.label} 鉴权通过（当前触发每分钟限流，稍候可用）`);
+        if (!resp.ok) return bad(ms, `HTTP ${resp.status}：${(await resp.text()).slice(0, 140)}`);
+        return ok(ms, `${preset.label} 可用 · ${model} 响应正常`);
+      }
       const { resp, ms } = await timedFetch(`${baseUrl}/v1/models`, { headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01" } });
       if (!resp.ok) return bad(ms, `HTTP ${resp.status}：${(await resp.text()).slice(0, 140)}`);
       const d: any = await resp.json();

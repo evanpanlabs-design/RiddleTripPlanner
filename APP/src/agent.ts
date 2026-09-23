@@ -44,12 +44,15 @@ export function buildModel(): Model<any> {
     input: ["text"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 128000,
-    maxTokens: 8192,
-    // ANTHROPIC_AUTH_TOKEN 存在时（如美团 AIGC 网关强制 Bearer）注入 Authorization 头，
+    maxTokens: c.maxTokens ?? 8192, // 渠道级输出上限（Friday 32k：强约束后草案体积大，8k 会截断 apply_plan 参数）
+    // Bearer 渠道（预设 bearer=true，如 Friday/美团 AIGC 网关拒绝 x-api-key）：用解析后的 apiKey 注入
+    // Authorization 头——设置文件、UI 手填、环境变量三级解析都生效；env ANTHROPIC_AUTH_TOKEN 兜底兼容旧配置。
     // pi-ai 的 defaultHeaders 合并链包含 model.headers，与 x-api-key 并存不冲突
-    ...(c.api === "anthropic-messages" && process.env.ANTHROPIC_AUTH_TOKEN
-      ? { headers: { Authorization: `Bearer ${process.env.ANTHROPIC_AUTH_TOKEN}` } }
-      : {}),
+    ...(() => {
+      if (c.api !== "anthropic-messages") return {};
+      const token = (c.bearer && c.apiKey) || process.env.ANTHROPIC_AUTH_TOKEN;
+      return token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+    })(),
   } as Model<any>;
 }
 
@@ -176,7 +179,7 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
   const applyPlan: AgentTool = {
     name: "apply_plan",
     label: "生成/重写方案",
-    description: "提交完整方案草案落图。会经过语义校验（V1-V7），不通过则返回失败原因需修复后重试。days 数组长度必须等于状态中的天数。transit 项的 mode 须写明真实通勤方式（步行/骑行/驾车/公交/地铁/火车/飞机/大巴）：市内段系统按 mode 调高德补真实路径与耗时，跨城段调百度补真实班次。",
+    description: "提交完整方案草案落图。会经过语义校验（V1-V7），不通过则返回失败原因需修复后重试。days 数组长度必须等于状态中的天数。硬性要求：同一天内相邻两个活动（poi/lodging/terminal）之间必须有一个 transit item 连接——同城段 mode 写步行/骑行/公交/地铁/驾车，跨城段才写火车/飞机/大巴，不允许只罗列 poi 而省略通勤环节。transit 项的 mode 须写明真实通勤方式：市内段系统按 mode 调高德补真实路径与耗时，跨城段调百度补真实班次。",
     parameters: Type.Object({
       days: Type.Array(Type.Object({
         day: Type.Number(),
@@ -198,7 +201,7 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
     }),
     execute: async (_id, draft) => {
       store.snapshot("apply_plan");
-      const gaps = await applyDraft(store.trip, draft, emit);
+      const { gaps, autoEdges, skippedIntercity } = await applyDraft(store.trip, draft, emit);
       store.save(); // 落图后立即落盘：校验或系统异常崩溃不丢方案（校验失败路径 undo 会再纠正）
       const verify = await jev.d7Verify(planDesc(store.trip));
       const fails = Object.keys(verify).filter(k => !k.endsWith("_prob") && verify[k] === "fail");
@@ -214,7 +217,13 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
       const gapNote = gaps.length
         ? `。注意：${gaps.length} 条通勤边未获得真实路径——${gaps.map(g => `${g.from}→${g.to}（${g.mode}：${g.reason}）`).join("，")}。可用 search_poi 核实节点名后重新 apply_plan 修复，或在回复中向用户说明`
         : "";
-      return { content: [{ type: "text", text: `方案已落图并通过校验：${Object.keys(store.trip.events).length} 个 Event，${Object.keys(store.trip.checklist).length} 项清单。当前阶段 ${store.trip.stage}${gapNote}` }], details: { verify, route_gaps: gaps } };
+      const autoNote = autoEdges
+        ? `。工程层检测到同日相邻活动间缺通勤边，已按距离自动补 ${autoEdges} 条（≤1.5km 步行 / 其余驾车，已解析真实路径）`
+        : "";
+      const skipNote = skippedIntercity
+        ? `。另有 ${skippedIntercity} 处同日相邻活动跨城（>100km）且无通勤边，请补充火车/飞机/大巴 transit item`
+        : "";
+      return { content: [{ type: "text", text: `方案已落图并通过校验：${Object.keys(store.trip.events).length} 个 Event，${Object.keys(store.trip.checklist).length} 项清单。当前阶段 ${store.trip.stage}${autoNote}${skipNote}${gapNote}` }], details: { verify, route_gaps: gaps, auto_edges: autoEdges } };
     },
   };
 
@@ -475,7 +484,7 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
 
 /** 草案落图（事务式，移植自 orchestrator.py _apply_draft）。
  * 落图后做真实地理解析：节点经高德 searchPoi 补坐标，边按 mode 补距离/时长（失败降级留空）。 */
-async function applyDraft(trip: Trip, draft: any, emit?: (ev: RiddleEvent) => void): Promise<{ from: string; to: string; mode: string; reason: string }[]> {
+async function applyDraft(trip: Trip, draft: any, emit?: (ev: RiddleEvent) => void): Promise<{ gaps: { from: string; to: string; mode: string; reason: string }[]; autoEdges: number; skippedIntercity: number }> {
   const nodes: Trip["nodes"] = {}, edges: Trip["edges"] = {}, events: Trip["events"] = {}, checklist: Trip["checklist"] = {};
   const name2node = new Map<string, any>();
   const nid = (p: string) => `${p}_${Math.random().toString(16).slice(2, 10)}`;
@@ -520,7 +529,37 @@ async function applyDraft(trip: Trip, draft: any, emit?: (ev: RiddleEvent) => vo
     } catch { /* 单点失败降级为无坐标，不阻断落图 */ }
     emit?.({ type: "geo", done: ++done, total: nodeList.length });
   }
-  // 边数据补全：逐条调用共享解析函数（迁移脚本复用同一策略）
+  // v0.3.5 工程兜底：同一天相邻两个节点事件之间没有通勤边 → 按距离分级自动补边。
+  // LLM 常漏写市内通勤 item；≤100km 的断段纯机械可推断（≤1.5km 步行 / 其余驾车），
+  // >100km 的断段说明漏了跨城大交通环节，不臆造，计数返回让 LLM 补 transit item。
+  let autoEdges = 0, skippedIntercity = 0;
+  const byDay = new Map<number, any[]>();
+  for (const ev of Object.values<any>(events)) {
+    if (ev.anchor_kind !== "node") continue;
+    for (const d of ev.day_refs ?? []) {
+      if (!byDay.has(d)) byDay.set(d, []);
+      byDay.get(d)!.push(ev);
+    }
+  }
+  for (const evs of byDay.values()) {
+    evs.sort((x, y) => String(x.time_window?.start ?? "99").localeCompare(String(y.time_window?.start ?? "99")));
+    for (let i = 0; i + 1 < evs.length; i++) {
+      const aId = evs[i].anchor_ref, bId = evs[i + 1].anchor_ref;
+      if (aId === bId) continue;
+      const linked = Object.values<any>(edges).some(e => (e.from_id === aId && e.to_id === bId) || (e.from_id === bId && e.to_id === aId));
+      if (linked) continue;
+      const ga = nodes[aId]?.geo, gb = nodes[bId]?.geo;
+      if (!ga || !gb) continue; // 坐标未解析的断段无法推断距离，交由 gaps 提示节点问题
+      const dist = geodesicM(ga, gb);
+      if (dist > 100_000) { skippedIntercity++; continue; }
+      // 两端都是场站且相距 >30km：典型跨城铁路段，大交通必须由 LLM 的 transit item 负责，不臆造驾车
+      if (dist > 30_000 && nodes[aId]?.anchor === "terminal" && nodes[bId]?.anchor === "terminal") { skippedIntercity++; continue; }
+      const e = { edge_id: nid("edge"), from_id: aId, to_id: bId, mode: dist <= 1500 ? "步行" : "驾车", distance_m: null, duration_s: null, data_source: "empty", geometry: [], auto: true };
+      edges[e.edge_id] = e;
+      autoEdges++;
+    }
+  }
+  // 边数据补全：逐条调用共享解析函数（迁移脚本复用同一策略；自动补的边也走同一管线）
   for (const e of Object.values(edges)) await resolveEdgeData(e, nodes, events);
   // 通勤路径完备性收尾：凡有起讫坐标的边保底两点几何（地图不断线）；
   // 收集缺口（算路降级 / 节点无坐标）返回给调用方，由 LLM 修复或向用户说明
@@ -539,7 +578,7 @@ async function applyDraft(trip: Trip, draft: any, emit?: (ev: RiddleEvent) => vo
   }
   trip.nodes = nodes; trip.edges = edges; trip.events = events; trip.checklist = checklist;
   if (!trip.days) trip.days = (draft.days ?? []).length;
-  return gaps;
+  return { gaps, autoEdges, skippedIntercity };
 }
 
 /* ================= 边数据补全（applyDraft 与迁移脚本共用） =================

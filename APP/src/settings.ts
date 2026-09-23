@@ -13,7 +13,7 @@ import { join, dirname } from "node:path";
 
 const SETTINGS_PATH = join(import.meta.dirname, "../runs/settings.json");
 
-export type LlmProvider = "deepseek" | "claude" | "chatgpt" | "glm" | "custom";
+export type LlmProvider = "deepseek" | "claude" | "chatgpt" | "glm" | "friday" | "custom";
 
 export interface ProviderConf { apiKey: string; baseUrl: string; model: string }
 
@@ -32,6 +32,8 @@ interface LlmPreset {
   label: string; api: string; provider: string;
   baseUrl: string; model: string;
   envKey: string; envBase?: string; envModel?: string;
+  bearer?: boolean; // true = 该渠道强制 Authorization: Bearer（如美团 AIGC 网关拒绝 x-api-key）
+  maxTokens?: number; // 输出上限，缺省 8192（DeepSeek 上限）；大草案（强约束通勤边后）容易超 8k，按渠道调大
 }
 
 export const LLM_PRESETS: Record<LlmProvider, LlmPreset> = {
@@ -39,6 +41,7 @@ export const LLM_PRESETS: Record<LlmProvider, LlmPreset> = {
   claude: { label: "Claude（Anthropic）", api: "anthropic-messages", provider: "anthropic", baseUrl: "https://api.anthropic.com", model: "claude-sonnet-4-5", envKey: "ANTHROPIC_API_KEY" },
   chatgpt: { label: "ChatGPT（OpenAI）", api: "openai-completions", provider: "openai", baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini", envKey: "OPENAI_API_KEY" },
   glm: { label: "GLM（智谱）", api: "openai-completions", provider: "zhipu", baseUrl: "https://open.bigmodel.cn/api/paas/v4", model: "glm-4.5-flash", envKey: "GLM_API_KEY" },
+  friday: { label: "Friday（美团 AIGC）", api: "anthropic-messages", provider: "anthropic", baseUrl: "https://aigc.sankuai.com/v1/anthropic", model: "glm-52-meituan", envKey: "ANTHROPIC_AUTH_TOKEN", bearer: true, maxTokens: 32768 },
   custom: { label: "自定义（OpenAI 兼容）", api: "openai-completions", provider: "custom", baseUrl: "", model: "", envKey: "LLM_API_KEY", envBase: "LLM_BASE_URL", envModel: "LLM_MODEL" },
 };
 
@@ -83,6 +86,8 @@ export function resolveLlm() {
   const c = s.conf[s.provider] ?? { apiKey: "", baseUrl: "", model: "" };
   return {
     provider: s.provider, label: preset.label, api: preset.api, apiProvider: preset.provider,
+    bearer: !!preset.bearer,
+    maxTokens: preset.maxTokens ?? 8192,
     baseUrl: (c.baseUrl || (preset.envBase ? process.env[preset.envBase] : "") || preset.baseUrl).replace(/\/$/, ""),
     model: c.model || (preset.envModel ? process.env[preset.envModel] : "") || preset.model,
     apiKey: c.apiKey || process.env[preset.envKey] || "",
