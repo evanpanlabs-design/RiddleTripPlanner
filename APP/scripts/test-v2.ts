@@ -4,7 +4,7 @@
  * 用法：npm run test:v2 */
 import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { assembleDraft, checkChainCompleteness, walkTree, type DraftV2, type EventV2, type RouteDetail, type PoiDetail } from "../src/memory/event-v2.ts";
+import { assembleDraft, checkChainCompleteness, checkPlanQuality, walkTree, type DraftV2, type EventV2, type RouteDetail, type PoiDetail, type OpeningDetail } from "../src/memory/event-v2.ts";
 import { migrateTripV1toV2 } from "../src/memory/migrate-v2.ts";
 import { TripStore, emptyTrip, type Trip } from "../src/memory/trip-store.ts";
 import { convexHull, douglasPeucker, wgs84ToGcj02 } from "../src/tools/osm-aoi.ts";
@@ -161,6 +161,45 @@ const [glng, glat] = wgs84ToGcj02(116.404, 39.915);
 ok(Math.abs(glng - 116.404) < 0.01 && Math.abs(glat - 39.915) < 0.01 && (glng !== 116.404 || glat !== 39.915), "WGS84→GCJ02 国内偏移合理");
 const [olng, olat] = wgs84ToGcj02(-74.006, 40.7128);
 ok(olng === -74.006 && olat === 40.7128, "境外坐标不偏移");
+
+// ---------- Q1–Q3 方案质量判断（0.4.3） ----------
+console.log("== 方案质量判断 ==");
+const mkPoi = (id: string, name: string, day: number, start: string | null, geo?: { lat: number; lng: number } | null, extra?: Partial<PoiDetail>): EventV2 => ({
+  event_id: id, kind: "poi", name, parent_id: null, seq: 1, day_refs: [day],
+  time_window: start ? { start, end: null, source: "user" as const } : null,
+  status: "active", provenance: "user",
+  detail: { role: "activity", geo: geo ? { ...geo, source: "api" as const } : null, ...extra },
+});
+const od = (periods: OpeningDetail["periods"], text: string, source: OpeningDetail["source"] = "api"): OpeningDetail => ({ periods, text, source });
+// Q3：2024-10-07 是周一（百度 day=1）；博物馆周一 9:00–17:00 开放
+const museum = (start: string, source: OpeningDetail["source"] = "api") =>
+  mkPoi("m1", "博物馆", 1, start, null, { opening_detail: od([{ open: { day: 1, hour: 9, minute: 0 }, close: { day: 1, hour: 17, minute: 0 } }], "周一 9:00-17:00", source) });
+const q3Hard = checkPlanQuality({ m1: museum("20:00") }, { startDate: "2024-10-07", days: 1 });
+ok(q3Hard.hard.length === 1 && q3Hard.hard[0].code === "Q3_OPENING_CONFLICT", "Q3：闭馆时段到访 → 硬冲突", JSON.stringify(q3Hard.hard));
+ok(checkPlanQuality({ m1: museum("10:00") }, { startDate: "2024-10-07", days: 1 }).hard.length === 0, "Q3：开放时段内到访 → 通过");
+ok(checkPlanQuality({ m1: museum("20:00", "llm_inference") }, { startDate: "2024-10-07", days: 1 }).hard.length === 0, "Q3：llm_inference 来源不作校验依据");
+ok(checkPlanQuality({ m1: museum("20:00") }, { startDate: null, days: 1 }).hard.length === 0, "Q3：缺出发日期跳过星期映射");
+const nightOwl = mkPoi("n1", "夜市", 1, "23:00", null, { opening_detail: od([{ open: { day: 1, hour: 20, minute: 0 }, close: { day: 2, hour: 2, minute: 0 } }], "20:00-次日02:00") });
+ok(checkPlanQuality({ n1: nightOwl }, { startDate: "2024-10-07", days: 1 }).hard.length === 0, "Q3：跨夜时段只判下限 → 通过");
+// Q1：A(31,120) 09:00 → B(31,121) 12:00 → C(31.05,120.05) 15:00，AB/BC ≈100km 而 AC ≈8km
+const bt = {
+  a: mkPoi("a", "城东", 1, "09:00", { lat: 31.0, lng: 120.0 }),
+  b: mkPoi("b", "远郊", 1, "12:00", { lat: 31.0, lng: 121.0 }),
+  c: mkPoi("c", "城东北", 1, "15:00", { lat: 31.05, lng: 120.05 }),
+};
+const q1 = checkPlanQuality(bt, { days: 1 });
+ok(q1.advisories.length === 1 && q1.advisories[0].code === "Q1_BACKTRACK" && q1.hard.length === 0, "Q1：明显折返 → 建议级不打回", JSON.stringify(q1.advisories));
+const far = { ...bt, c: mkPoi("c", "更远的下一站", 1, "15:00", { lat: 31.0, lng: 121.9 }) };
+ok(checkPlanQuality(far, { days: 1 }).advisories.length === 0, "Q1：一路向东不折返 → 通过");
+// Q2：单日 8 个活动过满；3 天行程中间天空置
+const packed: Record<string, EventV2> = {};
+for (let i = 1; i <= 8; i++) packed[`p${i}`] = mkPoi(`p${i}`, `点位${i}`, 1, `${8 + i}:00`.slice(0, 5));
+ok(checkPlanQuality(packed, { days: 2 }).advisories.some(q => q.code === "Q2_INTENSITY" && q.message.includes("密度过高")), "Q2：单日 8 活动 → 过满提示");
+const gapDay: Record<string, EventV2> = {};
+for (let i = 1; i <= 4; i++) gapDay[`g${i}`] = mkPoi(`g${i}`, `点位${i}`, 1, `${8 + i}:00`.slice(0, 5));
+gapDay.g5 = mkPoi("g5", "收尾", 3, "10:00");
+ok(checkPlanQuality(gapDay, { days: 3 }).advisories.some(q => q.code === "Q2_INTENSITY" && q.message.includes("Day2")), "Q2：中间天空置 → 强度不均提示");
+ok(checkPlanQuality(bt, { days: 1 }).hard.length === 0, "Q 族整体：正常方案无硬冲突");
 
 console.log(`\n结果：${pass} 通过，${fail} 失败`);
 process.exit(fail ? 1 : 0);

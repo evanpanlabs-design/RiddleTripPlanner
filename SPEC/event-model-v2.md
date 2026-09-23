@@ -1,15 +1,18 @@
 # Riddle 事件模型 v2 Schema
 
-> 版本：v0.2（2026-09-23） | 状态：**已审过，0.4.2 已落地**
+> 版本：v0.3（2026-09-23） | 状态：**已审过，0.4.3 已落地**
 > 上游依据：0.4.x 设计讨论共识（事件分类建模 / 事件图管理 / 数据层百度+OSM Hybrid）
 > 读者：工程、Agent 开发。与 SPEC.md 的关系：SPEC 描述 v1 现行模型，本文档是 v2 的迁移目标。
-> 0.4.1 实现位置：`APP/src/memory/event-v2.ts`（Schema + 组装 + V8）、`migrate-v2.ts`（惰性迁移）、
-> `project-v1.ts`（v2→v1 投影兼容桥，0.4.3 前台切换后退役）、`tools/baidu-place.ts`（place detail 富化）、
-> `tools/osm-aoi.ts`（OSM 边界获取器）；纯逻辑单测 `APP/scripts/test-v2.ts`（`npm run test:v2`）。
-> 落地偏差说明：v1 投影是 0.4.1 的兼容策略——v2 树为唯一事实源，UI/D7/摘要暂消费投影，与本文件不冲突。
+> 0.4.1 实现位置：`APP/src/memory/event-v2.ts`（Schema + 组装 + V8 + Q1–Q3）、`migrate-v2.ts`（惰性迁移）、
+> `tools/baidu-place.ts`（place detail 富化）、`tools/osm-aoi.ts`（OSM 边界获取器）；
+> 纯逻辑单测 `APP/scripts/test-v2.ts`（`npm run test:v2`）。
 > 0.4.2 实现位置：V8 嵌套感知在 `event-v2.ts checkChainCompleteness`（子树端点等价 + AOI 内部链条），并进
 > `agent.ts` 的 D7 统一校验报告；卡片真阻塞 HITL = `agent.ts decidePending` + `server.ts /api/pending/decide`
 > + `UI/app.html` 聊天卡片（自然语言消费降为兜底路径）。
+> 0.4.3 实现位置：前台（时间线/地图/详情/gateReport/tripSummary/planDesc/statePayload）全部直读 v2 树，
+> `project-v1.ts` 投影桥已删除——v2 树是内存/落盘/前台的唯一事实源（legacy v1 三表仅作惰性迁移输入，
+> 迁移后即剥离）；AOI 边界面首绘（真边界实线/包络虚线）；Q1–Q3 方案质量判断在 `event-v2.ts checkPlanQuality`
+> 并进 D7（Q3 营业时段冲突=硬校验，Q1 动线折返/Q2 强度均匀=建议级）。
 
 ---
 
@@ -239,6 +242,14 @@ LLM 不提交嵌套 JSON（嵌套结构在 0.3.x 已验证是幻觉与 token 重
 | V7 待办识别 | 需预订/查证的事项已入清单 | 新增：AOI 无边界且包络不可得 → 自动入清单 |
 | **V8 链条完整（新）** | 同日相邻活动事件之间必须存在 route 事件连接（0.4.2 嵌套感知：端点指向 AOI 子事件 ≡ 指向该 AOI；AOI 内部同日相邻子活动同规则） | "走得通"从 prompt 约束升级为 schema 校验 |
 
+质量族（Q，0.4.3，机械校验，吃 detail 字段；与 V 族结构校验互补——V 判"结构对不对"，Q 判"方案好不好"）：
+
+| 规则 | 内容 | 级别 |
+|------|------|------|
+| Q1 动线折返 | 同父级同日活动链 A→B→C 明显回头（AC < 0.6×min(AB,BC) 且绕行 >20km，按 geo 计算） | 建议级（压 probs，不打回） |
+| Q2 强度均匀 | 单日活动数 ≥8 / 通勤合计 ≥4h 为过满；多日行程中天空置而其他天 ≥4 活动为过松 | 建议级 |
+| Q3 营业时段冲突 | 计划到达时间落在 opening_detail.periods 当天开放段之外（需出发日期映射星期；llm_inference 来源不作依据；跨夜段只判下限） | **硬校验**（进 fails 打回） |
+
 ## 9. 迁移映射（v1 → v2）
 
 现有 runs/ 下的 trip.json 不丢，启动时惰性迁移：
@@ -262,7 +273,7 @@ provenance：迁移数据的事件级 = llm_inference，geo/geometry 字段级 =
 |------|------|
 | **0.4.1**（本文档审过后动工） | Schema v2 落地（类型定义 + 迁移器 + applyDraft v2 组装）；百度 place detail 接入（opening_detail/price/rating/scope_grade/classified_poi_tag 填充）；OSM AOI 异步获取器 + 缓存 + 包络兜底 |
 | **0.4.2**（已落地） | V8 嵌套感知图完整性校验进 D7；聊天卡片真阻塞 HITL |
-| 0.4.3 | 时间线结构化展示（消费 v2 树）；Jev 方案质量判断（动线折返/强度均匀，吃 price/rating/opening_detail 字段） |
+| **0.4.3**（已落地） | 时间线结构化展示（消费 v2 树，AOI 嵌套容器 + 地图边界面，project-v1 投影桥退役）；Jev 方案质量判断 Q1–Q3（动线折返/强度均匀/营业时段冲突，吃 geo/opening_detail/耗时字段） |
 
 ## 11. 明确不做（本版）
 

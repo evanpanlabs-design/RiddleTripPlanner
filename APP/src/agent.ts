@@ -14,7 +14,7 @@ import { JevClient } from "./jev/client.ts";
 import { ResilientJudge } from "./jev/resilient-judge.ts";
 import { TH, d4ChecklistMatchQuestions } from "./jev/questions.ts";
 import { TripStore, tripSummary, planDesc, gateReport, destList, type Trip } from "./memory/trip-store.ts";
-import { assembleDraft, checkChainCompleteness, isAoi, isPoi, isRoute, childrenOf, type DraftV2, type EventV2, type RouteEvent, type AoiEvent, type PoiEvent } from "./memory/event-v2.ts";
+import { assembleDraft, checkChainCompleteness, checkPlanQuality, isAoi, isPoi, isRoute, childrenOf, type DraftV2, type EventV2, type RouteEvent, type AoiEvent, type PoiEvent } from "./memory/event-v2.ts";
 import { enrichFromBaidu } from "./tools/baidu-place.ts";
 import { fetchAoiBoundary, convexHull } from "./tools/osm-aoi.ts";
 import { Scheduler, type PendingQuestion } from "./scheduler/scheduler.ts";
@@ -90,6 +90,13 @@ function textOf(msg: any): string {
   if (!msg) return "";
   if (typeof msg.content === "string") return msg.content;
   return (msg.content ?? []).map((c: any) => c.text ?? "").join(" ");
+}
+
+/** 从 slots.date_range 自由文本里解析出发日（首个 ISO 日期），供 Q3 营业时段校验把 day_refs 映射为星期几；解析不到则跳过 Q3 */
+function startDateOf(trip: Trip): string | null {
+  const dr = trip.slots?.date_range;
+  const m = typeof dr === "string" ? dr.match(/\d{4}-\d{2}-\d{2}/) : null;
+  return m ? m[0] : null;
 }
 
 export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
@@ -239,14 +246,22 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
       const v8 = checkChainCompleteness(store.trip.events_v2 ?? {});
       probs.V8_chain_integrity = v8.length ? 0 : 1;
       if (v8.length) fails.push("V8_chain_integrity");
-      emit({ type: "jev", sub: "校验", fails, probs, pass: !fails.length });
+      // Q1–Q3 方案质量判断进 D7（0.4.3）：机械校验，吃 0.4.1 抓回的 detail 字段（geo/opening_detail/耗时）。
+      // Q3 营业时段冲突=硬校验（进 fails 打回）；Q1 动线折返/Q2 强度均匀=建议级，只压 probs 随回复提示。
+      const quality = checkPlanQuality(store.trip.events_v2 ?? {}, { startDate: startDateOf(store.trip), days: store.trip.days });
+      probs.Q1_route_backtrack = quality.advisories.some(q => q.code === "Q1_BACKTRACK") ? 0 : 1;
+      probs.Q2_intensity_balance = quality.advisories.some(q => q.code === "Q2_INTENSITY") ? 0 : 1;
+      probs.Q3_opening_conflict = quality.hard.length ? 0 : 1;
+      if (quality.hard.length) fails.push("Q3_opening_conflict");
+      emit({ type: "jev", sub: "校验", fails, probs, advisories: quality.advisories.map(a => a.message), pass: !fails.length });
       store.trip.stage = gateReport(store.trip).stage;
       store.save();
       if (fails.length) {
         store.undo();
         const probStr = fails.map(f => `${f}=${(probs[f] ?? 0).toFixed(2)}`).join(", ");
         const v8Str = v8.length ? `。链条缺失：${v8.map(e => e.message).join("；")}` : "";
-        return { content: [{ type: "text", text: `校验未通过（${fails.join(", ")}），请修复后重新提交完整草案。概率：${probStr}${v8Str}` }], details: { verify, v8 } };
+        const q3Str = quality.hard.length ? `。营业时段冲突：${quality.hard.map(q => q.message).join("；")}` : "";
+        return { content: [{ type: "text", text: `校验未通过（${fails.join(", ")}），请修复后重新提交完整草案。概率：${probStr}${v8Str}${q3Str}` }], details: { verify, v8, quality } };
       }
       // 落图校验通过：整树 draft → active（SPEC §3.1 status 语义）
       for (const ev of Object.values(store.trip.events_v2 ?? {})) if (ev.status === "draft") ev.status = "active";
@@ -257,7 +272,8 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
         ? `。注意：${gaps.length} 条通勤段未获得真实路径——${gaps.map(g => `${g.from}→${g.to}（${g.mode}：${g.reason}）`).join("，")}。可用 search_poi 核实点位名后重新 apply_plan 修复，或在回复中向用户说明`
         : "";
       const aoiNote = aoiAsync ? `。${aoiAsync} 个景区的边界正在后台获取（OSM），成功后会自动热替换包络` : "";
-      return { content: [{ type: "text", text: `方案已落图并通过校验：${Object.keys(store.trip.events_v2 ?? {}).length} 个事件（含嵌套），${Object.keys(store.trip.checklist).length} 项清单。当前阶段 ${store.trip.stage}${aoiNote}${gapNote}${warnNote}` }], details: { verify, route_gaps: gaps, warnings } };
+      const qualityNote = quality.advisories.length ? `。质量提示（建议级，未阻塞）：${quality.advisories.map(q => q.message).join("；")}——可在后续与用户共创时优化` : "";
+      return { content: [{ type: "text", text: `方案已落图并通过校验：${Object.keys(store.trip.events_v2 ?? {}).length} 个事件（含嵌套），${Object.keys(store.trip.checklist).length} 项清单。当前阶段 ${store.trip.stage}${aoiNote}${gapNote}${warnNote}${qualityNote}` }], details: { verify, route_gaps: gaps, warnings, quality } };
     },
   };
 

@@ -39,10 +39,10 @@ server.ts ──► 每项目一个 RiddleRuntime（agent.ts createRiddleAgent�
 | `jev/resilient-judge.ts` | **弹性判断器（Jev→LLM 退级）** | 继承 `JevClient.ask`：Jev 停用/无 key/请求失败→自动切 LLM 判断（60s 冷却避免反复白等超时），恢复自动切回；切换发 `jev` 引擎事件留痕 |
 | `jev/llm-judge.ts` | LLM 判断器（Jev 的退级替身） | 与 `JevClient.ask` 同接口：同 state/questions 输入、同 answers schema（noul/choice）输出；schema 清洗（非法值 fail-closed）；429 分钟级退避 |
 | `jev/questions.ts` | **全部判断问题与阈值定义**（判断系统的"法典"） | `TH` 阈值表（intentState 0.8 / slotAccept 0.6 / checklistMatch 0.7…）；`INTENTS` + `STATE_CHANGE_INTENTS`；`d1IntentQuestions`、`d4ChecklistMatchQuestions`、`d6RadiusQuestion`、`d7VerifyQuestions`、`pendingConsumeQuestion` |
-| `memory/trip-store.ts` | 领域模型 + event sourcing 存储 | `Trip` 图（nodes/edges/events/checklist/candidate_pool + **events_v2**，0.4.1 起 v2 树为事实源）；`gateReport()`（D3 阶段门槛机械检查）；`TripStore`（ops.jsonl 日志/快照/undo，构造时 v1→v2 惰性迁移） |
-| `memory/event-v2.ts` | **v2 事件 Schema**（poi/route/aoi 判别联合 + 嵌套规则 + provenance） | `assembleDraft()`（扁平草案→树，结构校验打回）；`checkChainCompleteness()`（V8 嵌套感知链条硬校验：子树端点等价 + AOI 内部链条，0.4.2 起并入 D7 报告）；`walkTree/childrenOf` |
+| `memory/trip-store.ts` | 领域模型 + event sourcing 存储 | `Trip`（checklist/candidate_pool + **events_v2** 唯一事实源；0.4.3 起 legacy v1 三表仅作迁移输入）；`gateReport()`（D3 阶段门槛机械检查）；`tripSummary()/planDesc()`（0.4.3 起直读 v2 树）；`TripStore`（ops.jsonl 日志/快照/undo，构造时 v1→v2 惰性迁移后剥离 v1，save 落盘只存 v2） |
+| `memory/event-v2.ts` | **v2 事件 Schema**（poi/route/aoi 判别联合 + 嵌套规则 + provenance） | `assembleDraft()`（扁平草案→树，结构校验打回）；`checkChainCompleteness()`（V8 嵌套感知链条硬校验：子树端点等价 + AOI 内部链条，0.4.2 起并入 D7 报告）；`checkPlanQuality()`（Q1–Q3 方案质量判断，0.4.3 起并入 D7：Q3 营业时段冲突=硬校验，Q1 折返/Q2 强度=建议级）；`walkTree/childrenOf` |
 | `memory/migrate-v2.ts` | v1→v2 迁移器（SPEC/event-model-v2.md §9） | `migrateTripV1toV2()`：Node_→poi / Edge_→route / Event_合并上移；status 与 provenance 映射 |
-| `memory/project-v1.ts` | v2→v1 投影兼容桥（UI/D7 暂消费，0.4.3 退役） | `projectV1()` 纯函数派生 nodes/edges/events；`syncProjection()` 变更后必调 |
+| ~~`memory/project-v1.ts`~~ | 已删除（0.4.3） | v2→v1 投影兼容桥退役：前台/D7/摘要全部直读 v2 树 |
 | `tools/baidu-place.ts` | 百度 Place 检索+详情（0.4.1 富化） | `enrichFromBaidu()`：opening_detail/price/rating/scope_grade/classified_poi_tag |
 | `tools/osm-aoi.ts` | OSM AOI 边界异步获取器（SPEC §7 第①级） | `fetchAoiBoundary()`（Nominatim→Overpass 镜像轮询→WGS84→GCJ02→DP 抽稀→30 天缓存）；`convexHull`（包络兜底） |
 | `scheduler/scheduler.ts` | 阶段机 + pending 队列（持久化） | `Scheduler.enqueue/dequeue/remove(id)`；队列落盘 `pending.json`，重启恢复 |
@@ -78,7 +78,7 @@ runs/（APP/runs/）   运行时数据：projects.json 注册表、settings.json
 | 意图分类 | `jev/questions.ts d1IntentQuestions` → `agent.ts transformContext`；意图分类法在 `ANALYSIS/02_intent_taxonomy_and_slots.md` |
 | 清单实体级勾选（I6） | `agent.ts` 搜 `confirm_progress`：beforeToolCall 的 D4 逐项复核 + `approvedChecklist` 旁路 + `checklist_confirm` pending |
 | pending 队列机制 | `scheduler/scheduler.ts` + `agent.ts transformContext`（挂起消费判定 0.6 阈值） |
-| 方案落图与校验 | `agent.ts applyDraft`（地理/边补全）→ `d7Verify`（V1–V7）→ 失败 `store.undo()` |
+| 方案落图与校验 | `agent.ts applyDraft`（地理/边补全）→ `d7Verify`（LLM V1–V7）+ `checkChainCompleteness`（V8）+ `checkPlanQuality`（Q1–Q3）→ 失败 `store.undo()` |
 | 地图双源 Hybrid | `tools/amap.ts` vs `tools/baidu.ts`；能力调研结论在 `KB/baidu-webservice/INDEX.md` |
 | 设置热生效原理 | `settings.ts` 文件头注释（所有 resolve* 调用时解析） |
 | 历史原型对照 | `LAB/lab02-agent-pipeline/`（Python 版，questions.py 是 jev/questions.ts 的原型） |

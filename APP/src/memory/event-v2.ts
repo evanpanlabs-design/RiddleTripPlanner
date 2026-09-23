@@ -356,3 +356,129 @@ export function checkChainCompleteness(events: Record<string, EventV2>): Assembl
   }
   return errors;
 }
+
+// ---------------- Q1–Q3 方案质量判断（0.4.3，SPEC §8 质量族） ----------------
+/** 机械质量校验：吃 0.4.1 抓回的 detail 字段（geo/opening_detail/route 耗时）。
+ * 与 V 族结构校验的区别：V 族判"结构对不对"，Q 族判"方案好不好"。
+ * llm_inference 来源的字段按 SPEC §5 不作为校验依据。 */
+export interface QualityProblem { code: "Q1_BACKTRACK" | "Q2_INTENSITY" | "Q3_OPENING_CONFLICT"; message: string; ids: string[] }
+export interface PlanQuality { hard: QualityProblem[]; advisories: QualityProblem[] }
+
+/** haversine 距离（米）。memory 层保持零依赖，不引 tools/amap */
+function haversineM(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 6371000, rad = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * rad, dLng = (b.lng - a.lng) * rad;
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+
+/** 事件坐标：poi 取 detail.geo；aoi 取首个有坐标后代（与 UI 占位同一规则） */
+function geoOfEvent(events: Record<string, EventV2>, e: EventV2): { lat: number; lng: number } | null {
+  if (isPoi(e)) return e.detail.geo ?? null;
+  const queue = [...childrenOf(events, e.event_id)];
+  while (queue.length) {
+    const k = queue.shift()!;
+    if (isPoi(k) && k.detail.geo) return k.detail.geo;
+    queue.push(...childrenOf(events, k.event_id));
+  }
+  return null;
+}
+
+/** 出发日期把 day_refs 映射为星期几；百度 regular_open_hour.periods.day：1=周一 … 7=周日 */
+function baiduWeekday(startDate: string, day: number): number | null {
+  const base = new Date(`${startDate}T00:00:00Z`);
+  if (Number.isNaN(base.getTime())) return null;
+  const d = new Date(base.getTime() + (day - 1) * 86400_000);
+  const js = d.getUTCDay(); // 0=周日 … 6=周六
+  return js === 0 ? 7 : js;
+}
+
+const fmtKm = (m: number) => (m / 1000).toFixed(0);
+
+export function checkPlanQuality(
+  events: Record<string, EventV2>,
+  opts: { startDate?: string | null; days?: number } = {},
+): PlanQuality {
+  const hard: QualityProblem[] = [];
+  const advisories: QualityProblem[] = [];
+  const live = Object.values(events).filter(e => e.status !== "dropped");
+
+  // ---- Q1 动线折返（建议级）：同一父级同日活动链 A→B→C 明显回头 ----
+  const checkBacktrack = (kids: EventV2[], scope: string) => {
+    const acts = kids.filter(e => e.kind !== "route");
+    const days = [...new Set(acts.flatMap(e => e.day_refs))].sort((a, b) => a - b);
+    for (const day of days) {
+      const chain = acts.filter(e => e.day_refs.includes(day))
+        .sort((x, y) => (toMin(x.time_window?.start) ?? 9999) - (toMin(y.time_window?.start) ?? 9999) || x.seq - y.seq)
+        .map(e => ({ e, geo: geoOfEvent(events, e) }));
+      for (let i = 0; i + 2 < chain.length; i++) {
+        const [A, B, C] = [chain[i], chain[i + 1], chain[i + 2]];
+        if (!A.geo || !B.geo || !C.geo) continue;
+        const dAB = haversineM(A.geo, B.geo), dBC = haversineM(B.geo, C.geo), dAC = haversineM(A.geo, C.geo);
+        // 回头判定：AC 明显短于 AB/BC（B 是远离的折点）且绕行总量有实际代价（>20km）
+        if (dAB + dBC > 20_000 && dAC < 0.6 * Math.min(dAB, dBC)) {
+          advisories.push({
+            code: "Q1_BACKTRACK",
+            message: `Day${day}${scope ? `（${scope}）` : ""}：「${A.e.name}」→「${B.e.name}」→「${C.e.name}」动线折返——${fmtKm(dAB)}km + ${fmtKm(dBC)}km 的往返，但「${A.e.name}」与「${C.e.name}」仅相距 ${fmtKm(dAC)}km，建议调整顺序或合并同一天`,
+            ids: [A.e.event_id, B.e.event_id, C.e.event_id],
+          });
+        }
+      }
+    }
+  };
+  checkBacktrack(childrenOf(events, null), "");
+  for (const aoi of live.filter(isAoi)) checkBacktrack(childrenOf(events, aoi.event_id), aoi.name);
+
+  // ---- Q2 强度均匀（建议级）：单日过满 / 空置 ----
+  const totalDays = opts.days ?? Math.max(0, ...live.flatMap(e => e.day_refs));
+  if (totalDays > 1) {
+    const dayStats: { acts: number; commuteS: number }[] = [];
+    for (let day = 1; day <= totalDays; day++) {
+      // 活动计数：叶子访问（poi activity）+ 无子事件的 aoi 各计 1，避免父子双计
+      const acts = live.filter(e => e.day_refs.includes(day) && (
+        (isPoi(e) && e.detail.role === "activity") ||
+        (isAoi(e) && !childrenOf(events, e.event_id).some(k => k.day_refs.includes(day) && k.kind !== "route"))
+      )).length;
+      const commuteS = live.filter(e => isRoute(e) && e.day_refs.includes(day) && e.detail.data_source !== "empty")
+        .reduce((s, e) => s + ((e as RouteEvent).detail.duration_s ?? 0), 0);
+      dayStats.push({ acts, commuteS });
+    }
+    const busy = Math.max(...dayStats.map(s => s.acts));
+    dayStats.forEach((s, i) => {
+      if (s.acts >= 8) advisories.push({ code: "Q2_INTENSITY", message: `Day${i + 1}：当天 ${s.acts} 个活动，密度过高，建议拆分到相邻天`, ids: [] });
+      else if (s.commuteS >= 4 * 3600) advisories.push({ code: "Q2_INTENSITY", message: `Day${i + 1}：当天通勤合计约 ${(s.commuteS / 3600).toFixed(1)} 小时，在路上的时间过长，建议压缩或调整住宿锚点`, ids: [] });
+      else if (s.acts === 0 && busy >= 4) advisories.push({ code: "Q2_INTENSITY", message: `Day${i + 1}：当天没有安排活动，而其他天有多达 ${busy} 个——强度不均，建议匀一匀`, ids: [] });
+    });
+  }
+
+  // ---- Q3 营业时段冲突（硬校验）：计划到达时间落在当天开放时段之外 ----
+  if (opts.startDate) {
+    for (const e of live) {
+      if (!isPoi(e) && !isAoi(e)) continue;
+      const od = e.detail.opening_detail;
+      if (!od || od.source === "llm_inference" || !od.periods?.length) continue; // SPEC §5：推断数据不作校验依据
+      const startMin = toMin(e.time_window?.start);
+      const day = e.day_refs[0];
+      if (startMin == null || day == null) continue;
+      const wd = baiduWeekday(opts.startDate, day);
+      if (wd == null) continue;
+      const open = od.periods.some(p => {
+        if (p.open.day !== wd) return false;
+        const oMin = p.open.hour * 60 + p.open.minute;
+        if (startMin < oMin) return false;
+        // 跨夜段（close.day≠open.day）只判下限；当日段判到达时间在关门前
+        if (p.close.day === p.open.day) return startMin <= p.close.hour * 60 + p.close.minute;
+        return true;
+      });
+      if (!open) {
+        const wdLabel = ["一", "二", "三", "四", "五", "六", "日"][wd - 1];
+        hard.push({
+          code: "Q3_OPENING_CONFLICT",
+          message: `Day${day}「${e.name}」计划 ${e.time_window?.start} 到达，但周${wdLabel}不在其开放时段内（${od.text || `${od.periods.length} 个开放时段`}）——请调整该日的到访时间或改期`,
+          ids: [e.event_id],
+        });
+      }
+    }
+  }
+  return { hard, advisories };
+}
