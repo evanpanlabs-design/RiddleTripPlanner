@@ -34,7 +34,7 @@ export async function searchPoi(name: string, city?: string) {
   const [lng, lat] = (p.location || ",").split(",");
   return {
     amap_poi_id: p.id, name: p.name,
-    category_tags: (p.type || "").split(";"),
+    category_tags: Array.isArray(p.type) ? p.type : (p.type || "").split(";"),
     geo: lat ? { lng: +lng, lat: +lat } : null,
     city: p.cityname, opening_hours: null,
   };
@@ -54,11 +54,84 @@ export async function drivingRoute(from: { lng: number; lat: number }, to: { lng
       if (lng && lat) pts.push([+lng, +lat]);
     }
   }
-  if (pts.length > 300) {
-    const step = Math.ceil(pts.length / 300);
-    pts = pts.filter((_, i) => i % step === 0 || i === pts.length - 1);
-  }
+  pts = downsample(pts);
   return { distance_m: +p.distance, duration_s: +p.duration, geometry: pts };
+}
+
+/** 折线点降采样到 ≤300 点，控制 SSE/落盘体积 */
+function downsample(pts: [number, number][]): [number, number][] {
+  if (pts.length <= 300) return pts;
+  const step = Math.ceil(pts.length / 300);
+  return pts.filter((_, i) => i % step === 0 || i === pts.length - 1);
+}
+
+/** 解析 "lng,lat;lng,lat;…" 折线串 */
+function parsePolyline(s: unknown): [number, number][] {
+  const pts: [number, number][] = [];
+  for (const pair of String(s ?? "").split(";")) {
+    const [lng, lat] = pair.split(",");
+    if (lng && lat) pts.push([+lng, +lat]);
+  }
+  return pts;
+}
+
+/** 步行路径（v3，响应结构与驾车同构） */
+export async function walkingRoute(from: { lng: number; lat: number }, to: { lng: number; lat: number }) {
+  const data = await amapGet("/v3/direction/walking", {
+    origin: `${from.lng},${from.lat}`, destination: `${to.lng},${to.lat}`,
+  });
+  const p = data.route?.paths?.[0];
+  if (!p) return null;
+  let pts: [number, number][] = [];
+  for (const s of p.steps ?? []) pts.push(...parsePolyline(s.polyline));
+  return { distance_m: +p.distance, duration_s: +p.duration, geometry: downsample(pts) };
+}
+
+/** v4 接口（骑行）响应结构不同：errcode/errmsg + data.paths[].polyline 单串 */
+async function amapGetV4(path: string, params: Record<string, string>, retries = 2): Promise<any> {
+  const key = resolveAmapWebKey();
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const wait = MIN_INTERVAL - (Date.now() - lastCall);
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    lastCall = Date.now();
+    const qs = new URLSearchParams({ ...params, key });
+    const resp = await fetch(`${BASE}${path}?${qs}`);
+    const data = await resp.json();
+    if (Number(data.errcode) === 0) return data;
+    if (attempt < retries) { await new Promise(r => setTimeout(r, 1200 * (attempt + 1))); continue; }
+    throw new Error(`amap v4 error: ${data.errmsg} (${data.errcode})`);
+  }
+}
+
+/** 骑行路径（v4） */
+export async function bicyclingRoute(from: { lng: number; lat: number }, to: { lng: number; lat: number }) {
+  const data = await amapGetV4("/v4/direction/bicycling", {
+    origin: `${from.lng},${from.lat}`, destination: `${to.lng},${to.lat}`,
+  });
+  const p = data.data?.paths?.[0];
+  if (!p) return null;
+  let pts: [number, number][] = [];
+  for (const s of p.steps ?? []) pts.push(...parsePolyline(s.polyline));
+  return { distance_m: +p.distance, duration_s: +p.duration, geometry: downsample(pts) };
+}
+
+/** 同城公交/地铁换乘（v3 transit/integrated，需 city 参数）。 */
+export async function cityTransitRoute(from: { lng: number; lat: number }, to: { lng: number; lat: number }, city: string) {
+  const data = await amapGet("/v3/direction/transit/integrated", {
+    origin: `${from.lng},${from.lat}`, destination: `${to.lng},${to.lat}`,
+    city, cityd: city, strategy: "0",
+  });
+  const t = data.route?.transits?.[0];
+  if (!t) return null;
+  // 折线拼接：各 segment 的步行 steps + 公交线 + 地铁段
+  let pts: [number, number][] = [];
+  for (const seg of t.segments ?? []) {
+    for (const w of seg.walking?.steps ?? []) pts.push(...parsePolyline(w.polyline));
+    for (const b of seg.bus?.buslines ?? []) pts.push(...parsePolyline(b.polyline));
+    if (seg.railway?.polyline) pts.push(...parsePolyline(seg.railway.polyline));
+  }
+  const distance = +t.distance || null;
+  return { distance_m: distance, duration_s: +t.duration || null, geometry: downsample(pts) };
 }
 
 export function geodesicM(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {

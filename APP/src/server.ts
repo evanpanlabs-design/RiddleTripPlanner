@@ -21,9 +21,9 @@ import { config } from "dotenv";
 import { join } from "node:path";
 config({ path: join(import.meta.dirname, "../../.env") });
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { createRiddleAgent, buildModel, type RiddleRuntime } from "./agent.ts";
-import { TripStore, emptyTrip } from "./memory/trip-store.ts";
+import { TripStore, emptyTrip, destList, recordUserAction } from "./memory/trip-store.ts";
 import { LLM_PRESETS, loadSettings, saveSettings, publicSettings, resolveMapConfig, resolveWatchdogMs, type LlmProvider } from "./settings.ts";
 import { testConnection } from "./settings-test.ts";
 
@@ -71,7 +71,8 @@ interface Project {
 }
 
 const projects = new Map<string, Project>();
-const REPLAY_SKIP = new Set(["turn_start", "turn_end", "turn_error", "geo", "hello", "reset"]);
+// delta/delta_reset 是流式打字机噪声：不入重放日志（会挤掉 300 条的容量、撑爆磁盘文件）
+const REPLAY_SKIP = new Set(["turn_start", "turn_end", "turn_error", "geo", "hello", "reset", "delta", "delta_reset"]);
 
 function saveRegistry() {
   const metas = [...projects.values()].map(p => p.meta);
@@ -80,7 +81,11 @@ function saveRegistry() {
 
 function broadcast(p: Project, ev: Record<string, unknown>) {
   const stamped = { ...ev, ts: Date.now() };
-  if (!REPLAY_SKIP.has(ev.type as string)) { p.eventLog.push(stamped); if (p.eventLog.length > 300) p.eventLog.shift(); }
+  if (!REPLAY_SKIP.has(ev.type as string)) {
+    p.eventLog.push(stamped); if (p.eventLog.length > 300) p.eventLog.shift();
+    // 持久化到磁盘：服务重启后 SSE 订阅仍能重放 Jev 决策流（修复 eventLog 仅内存、重启即丢）
+    try { appendFileSync(join(RUNS_DIR, p.meta.id, "events.jsonl"), JSON.stringify(stamped) + "\n"); } catch { /* 目录未建时跳过 */ }
+  }
   const line = `data: ${JSON.stringify(stamped)}\n\n`;
   for (const res of p.sse) { try { res.write(line); } catch { /* 客户端断开由 close 清理 */ } }
 }
@@ -89,7 +94,7 @@ function broadcast(p: Project, ev: Record<string, unknown>) {
 function deriveTitle(p: Project): string {
   if (p.rt) {
     const t = p.rt.store.trip;
-    const dest = (t.destination.length ? t.destination : (t.slots.destination as string[])) ?? [];
+    const dest = destList(t);
     if (dest.length) return `${dest.join("·")}${t.days ? ` · ${t.days}日` : ""}`;
   }
   const first = p.conv.find(m => m.role === "user")?.text;
@@ -126,7 +131,15 @@ function getRt(p: Project): RiddleRuntime {
   const rt = createRiddleAgent(store);
   rt.onEvent(ev => broadcast(p, ev as unknown as Record<string, unknown>));
   rt.agent.subscribe((ev: any) => {
-    if (ev.type === "tool_execution_start") broadcast(p, { type: "tool", phase: "start", name: ev.toolName ?? ev.toolCall?.name });
+    // 流式文本：assistant 消息开始 → 通知前端清空；text_delta → 推送已累积文本（直接读 partial message，不自己拼 delta）
+    if (ev.type === "message_start") broadcast(p, { type: "delta_reset" });
+    if (ev.type === "message_update" && ev.assistantMessageEvent?.type === "text_delta") {
+      const text = (ev.message?.content ?? []).map((c: any) => c.text ?? "").join("");
+      if (text) broadcast(p, { type: "delta", text });
+    }
+    if (ev.type === "tool_execution_start") {
+      broadcast(p, { type: "tool", phase: "start", name: ev.toolName ?? ev.toolCall?.name, args: JSON.stringify(ev.args ?? ev.toolCall?.arguments ?? {}).slice(0, 90) });
+    }
     if (ev.type === "tool_execution_end") {
       const t = ev.result?.content?.[0]?.text ?? "";
       broadcast(p, { type: "tool", phase: "end", name: ev.toolName ?? ev.toolCall?.name, text: String(t).slice(0, 300) });
@@ -156,7 +169,13 @@ function loadRegistry() {
   try {
     for (const meta of JSON.parse(readFileSync(REGISTRY_PATH, "utf8")) as ProjectMeta[]) {
       meta.stage ??= "explore";
-      projects.set(meta.id, { meta, conv: [], eventLog: [], busy: false, sse: new Set() });
+      const p: Project = { meta, conv: [], eventLog: [], busy: false, sse: new Set() };
+      // 恢复磁盘上的事件日志（jev/pending/gate/tool），控制台决策流跨重启可见
+      try {
+        const lines = readFileSync(join(RUNS_DIR, meta.id, "events.jsonl"), "utf8").trim().split("\n").filter(Boolean);
+        p.eventLog.push(...lines.slice(-300).map(l => JSON.parse(l)));
+      } catch { /* 无事件日志 */ }
+      projects.set(meta.id, p);
     }
   } catch { /* 注册表损坏则从空开始 */ }
 }
@@ -308,10 +327,27 @@ const server = createServer(async (req, res) => {
     p.conv.length = 0;
     p.eventLog.length = 0;
     // 清掉磁盘状态，getRt 会以同一项目 id 重建空 trip（项目身份不变）
-    for (const f of ["trip.json", "ops.jsonl", "conv.json"]) { try { rmSync(join(RUNS_DIR, p.meta.id, f)); } catch { /* 不存在则跳过 */ } }
+    for (const f of ["trip.json", "ops.jsonl", "conv.json", "events.jsonl"]) { try { rmSync(join(RUNS_DIR, p.meta.id, f)); } catch { /* 不存在则跳过 */ } }
     getRt(p);
     touch(p);
     broadcast(p, { type: "reset" });
+    return sendJson(res, 200, statePayload(p));
+  }
+  // 用户手动勾选/取消清单项：绕过对话直接改状态，并记录 user_action 让 LLM 下轮知晓
+  if (path === "/api/checklist/toggle" && req.method === "POST") {
+    const p = resolveProject(url);
+    if (!p) return sendJson(res, 404, { error: "project not found" });
+    const body = await readBody(req);
+    const rt = getRt(p);
+    const item = rt.store.trip.checklist[String(body.item_id ?? "")];
+    if (!item) return sendJson(res, 404, { error: "checklist item not found" });
+    const undo = { kind: "restore_trip", trip: JSON.parse(JSON.stringify(rt.store.trip)) }; // 变更前快照
+    item.done = !!body.done;
+    recordUserAction(rt.store.trip, `用户手动${item.done ? "勾选" : "取消勾选"}了清单「${item.title}」`);
+    rt.store.log("checklist_toggle", { item_id: item.item_id, title: item.title, done: item.done, source: "user" }, undo);
+    rt.store.save();
+    touch(p);
+    broadcast(p, { type: "state_dirty" });
     return sendJson(res, 200, statePayload(p));
   }
   if (path === "/api/input" && req.method === "POST") {
@@ -335,11 +371,19 @@ const server = createServer(async (req, res) => {
       const last: any = [...rt.agent.state.messages].reverse().find((m: any) => m.role === "assistant");
       const reply = typeof last?.content === "string" ? last.content
         : (last?.content ?? []).map((c: any) => c.text ?? "").join("");
-      p.conv.push({ role: "agent", text: reply, ts: Date.now() });
+      // 空回复诊断：模型返回空内容时记录 stopReason/errorMessage（网关限流、schema 失败放弃等场景的指纹）
+      let finalReply = reply;
+      if (!reply.trim()) {
+        const errMsg = String((last as any)?.errorMessage ?? "");
+        console.warn(`[empty-reply] project=${p.meta.id} stopReason=${last?.stopReason ?? "?"} err=${errMsg.slice(0, 200)} messages=${rt.agent.state.messages.length}`);
+        // 对用户不展示空气泡：把模型层错误翻成可操作的兜底文案（demo 体验兜底）
+        finalReply = `（这轮模型网关没走通${/429|限制|rate/i.test(errMsg) ? "——触发了每分钟请求上限" : ""}，稍等十几秒把刚才的话再发一次就好，上下文都在）`;
+      }
+      p.conv.push({ role: "agent", text: finalReply, ts: Date.now() });
       persistConv(p);
       touch(p);
-      broadcast(p, { type: "turn_end", reply });
-      return sendJson(res, 200, { reply, ...statePayload(p) });
+      broadcast(p, { type: "turn_end", reply: finalReply });
+      return sendJson(res, 200, { reply: finalReply, ...statePayload(p) });
     } catch (e) {
       broadcast(p, { type: "turn_error", error: (e as Error).message });
       return sendJson(res, 500, { error: (e as Error).message });

@@ -1,6 +1,7 @@
 /** 百度 Web Service：跨城大交通（Direction v2 transit：火车/飞机/大巴）。
  * Hybrid 能力路由：百度只承担高德没有的大交通数据，POI/同城算路/底图仍在高德。
- * 坐标策略：请求带 coord_type=gcj02 直传，全系统统一 GCJ02（与高德底图一致，免转换层）。
+ * 坐标策略：请求 coord_type=gcj02 声明输入坐标系，ret_coordtype=gcj02 要求返回坐标系——
+ * 实测默认返回是 BD09（偏 ~500m），必须显式 ret_coordtype，全系统统一 GCJ02（与高德底图一致）。
  * 注意：请求 origin/destination 是 lat,lng（纬度在前，与高德相反）；
  *      返回 path 折线是 lng,lat（与高德 polyline 一致，直接可绘）。
  * 实测结构见 KB/baidu-webservice/INDEX.md（2026-09-22）。 */
@@ -10,6 +11,15 @@ import { geodesicM } from "./amap.ts";
 const BASE = "https://api.map.baidu.com";
 const MIN_INTERVAL = 400;
 let lastCall = 0;
+
+/** BD-09 → GCJ-02（存量数据迁移用：修复 ret_coordtype 缺失前落盘的百度折线） */
+const X_PI = Math.PI * 3000.0 / 180.0;
+export function bd09ToGcj02(lng: number, lat: number): [number, number] {
+  const x = lng - 0.0065, y = lat - 0.006;
+  const z = Math.hypot(x, y) - 0.00002 * Math.sin(y * X_PI);
+  const theta = Math.atan2(y, x) - 0.000003 * Math.cos(x * X_PI);
+  return [z * Math.cos(theta), z * Math.sin(theta)];
+}
 
 async function baiduGet(path: string, params: Record<string, string>): Promise<any> {
   const ak = resolveBaiduWebKey();
@@ -71,7 +81,8 @@ export async function intercityRoute(
   const data = await baiduGet("/direction/v2/transit", {
     origin: `${from.lat},${from.lng}`,      // 百度请求侧纬度在前
     destination: `${to.lat},${to.lng}`,
-    coord_type: "gcj02",
+    coord_type: "gcj02",                   // 输入坐标系
+    ret_coordtype: "gcj02",                // 返回坐标系（默认 BD09，偏 ~500m，必须显式指定）
     trans_type_intercity: TRANS_TYPE[prefer],
   });
   const routes: any[] = data.result?.routes ?? [];

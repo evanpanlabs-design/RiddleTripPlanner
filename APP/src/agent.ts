@@ -14,7 +14,7 @@ import { JevClient } from "./jev/client.ts";
 import { TH, d4ChecklistMatchQuestions } from "./jev/questions.ts";
 import { TripStore, tripSummary, planDesc, gateReport, type Trip } from "./memory/trip-store.ts";
 import { Scheduler } from "./scheduler/scheduler.ts";
-import { searchPoi, drivingRoute, geodesicM } from "./tools/amap.ts";
+import { searchPoi, drivingRoute, walkingRoute, bicyclingRoute, cityTransitRoute, geodesicM } from "./tools/amap.ts";
 import { intercityRoute, type IntercityPrefer } from "./tools/baidu.ts";
 import { resolveLlm } from "./settings.ts";
 
@@ -45,7 +45,12 @@ export function buildModel(): Model<any> {
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 128000,
     maxTokens: 8192,
-  };
+    // ANTHROPIC_AUTH_TOKEN 存在时（如美团 AIGC 网关强制 Bearer）注入 Authorization 头，
+    // pi-ai 的 defaultHeaders 合并链包含 model.headers，与 x-api-key 并存不冲突
+    ...(c.api === "anthropic-messages" && process.env.ANTHROPIC_AUTH_TOKEN
+      ? { headers: { Authorization: `Bearer ${process.env.ANTHROPIC_AUTH_TOKEN}` } }
+      : {}),
+  } as Model<any>;
 }
 
 /** streamSimple 包装：把设置里的 temperature 注入每次流式调用（未设置则交给 provider 默认） */
@@ -118,19 +123,20 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
   const routeTool: AgentTool = {
     name: "get_route",
     label: "查询路线",
-    description: "查询两点间路线。drive=驾车（高德）；transit=跨城火车/飞机/大巴（百度，返回真实车次/航班号+时刻+票价，为查询当日班次，随日期变化，应按代表性班次使用）；geodesic=测地线距离。",
+    description: "查询两点间路线。walk=步行 / bike=骑行 / drive=驾车（均高德真实路径+耗时）；transit=跨城火车/飞机/大巴（百度，返回真实车次/航班号+时刻+票价，为查询当日班次，随日期变化，应按代表性班次使用）；geodesic=测地线距离。",
     parameters: Type.Object({
       from_name: Type.String(), to_name: Type.String(),
-      mode: Type.Union([Type.Literal("drive"), Type.Literal("transit"), Type.Literal("geodesic")]),
+      mode: Type.Union([Type.Literal("walk"), Type.Literal("bike"), Type.Literal("drive"), Type.Literal("transit"), Type.Literal("geodesic")]),
       prefer: Type.Optional(Type.Union([Type.Literal("train"), Type.Literal("flight"), Type.Literal("coach")])),
     }),
     execute: async (_id: string, params: any) => {
       const { from_name, to_name, mode } = params;
       const [a, b] = await Promise.all([searchPoi(from_name), searchPoi(to_name)]);
       if (!a?.geo || !b?.geo) return { content: [{ type: "text", text: JSON.stringify({ error: "POI 未找到", from: !!a?.geo, to: !!b?.geo }) }], details: {} };
-      if (mode === "drive") {
-        const r = await drivingRoute(a.geo, b.geo);
-        return { content: [{ type: "text", text: JSON.stringify(r ?? { error: "无驾车路线" }) }], details: {} };
+      if (mode === "walk" || mode === "bike" || mode === "drive") {
+        const fn = mode === "walk" ? walkingRoute : mode === "bike" ? bicyclingRoute : drivingRoute;
+        const r = await fn(a.geo, b.geo);
+        return { content: [{ type: "text", text: JSON.stringify(r ?? { error: `无${mode}路线` }) }], details: {} };
       }
       if (mode === "transit") {
         const r = await intercityRoute(a.geo, b.geo, (params.prefer ?? "train") as IntercityPrefer);
@@ -154,6 +160,10 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
       let { value } = params;
       // LLM 有时把数组/对象序列化成 JSON 字符串传进来，归一化还原
       if (typeof value === "string") { const t = value.trim(); if (/^[\[{]/.test(t)) { try { value = JSON.parse(t); } catch { /* 保留原串 */ } } }
+      // destination 归一化为数组：LLM 常传裸字符串（"天津"）或分隔串（"天津、北京"），不落数组会导致读取侧 .join 崩溃
+      if (slot === "destination" && typeof value === "string") {
+        value = value.split(/[、，,;/]/).map((s: string) => s.trim()).filter(Boolean);
+      }
       const old = JSON.parse(JSON.stringify(store.trip.slots));
       if (slot === "destination" && Array.isArray(value)) store.trip.destination = value as string[];
       if (slot === "days") store.trip.days = Number(value) || store.trip.days;
@@ -166,7 +176,7 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
   const applyPlan: AgentTool = {
     name: "apply_plan",
     label: "生成/重写方案",
-    description: "提交完整方案草案落图。会经过语义校验（V1-V7），不通过则返回失败原因需修复后重试。days 数组长度必须等于状态中的天数。",
+    description: "提交完整方案草案落图。会经过语义校验（V1-V7），不通过则返回失败原因需修复后重试。days 数组长度必须等于状态中的天数。transit 项的 mode 须写明真实通勤方式（步行/骑行/驾车/公交/地铁/火车/飞机/大巴）：市内段系统按 mode 调高德补真实路径与耗时，跨城段调百度补真实班次。",
     parameters: Type.Object({
       days: Type.Array(Type.Object({
         day: Type.Number(),
@@ -188,7 +198,8 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
     }),
     execute: async (_id, draft) => {
       store.snapshot("apply_plan");
-      await applyDraft(store.trip, draft, emit);
+      const gaps = await applyDraft(store.trip, draft, emit);
+      store.save(); // 落图后立即落盘：校验或系统异常崩溃不丢方案（校验失败路径 undo 会再纠正）
       const verify = await jev.d7Verify(planDesc(store.trip));
       const fails = Object.keys(verify).filter(k => !k.endsWith("_prob") && verify[k] === "fail");
       const probs: Record<string, number> = {};
@@ -200,7 +211,10 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
         store.undo();
         return { content: [{ type: "text", text: `校验未通过（${fails.join(", ")}），请修复后重新提交。概率：${fails.map(f => `${f}=${verify[f + "_prob"].toFixed(2)}`).join(", ")}` }], details: { verify } };
       }
-      return { content: [{ type: "text", text: `方案已落图并通过校验：${Object.keys(store.trip.events).length} 个 Event，${Object.keys(store.trip.checklist).length} 项清单。当前阶段 ${store.trip.stage}` }], details: { verify } };
+      const gapNote = gaps.length
+        ? `。注意：${gaps.length} 条通勤边未获得真实路径——${gaps.map(g => `${g.from}→${g.to}（${g.mode}：${g.reason}）`).join("，")}。可用 search_poi 核实节点名后重新 apply_plan 修复，或在回复中向用户说明`
+        : "";
+      return { content: [{ type: "text", text: `方案已落图并通过校验：${Object.keys(store.trip.events).length} 个 Event，${Object.keys(store.trip.checklist).length} 项清单。当前阶段 ${store.trip.stage}${gapNote}` }], details: { verify, route_gaps: gaps } };
     },
   };
 
@@ -447,7 +461,10 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
   const agent = new Agent({
     initialState: { systemPrompt: SYSTEM, tools, messages: [], model: buildModel() },
     streamFn: streamWithSettings,
-    getApiKey: () => resolveLlm().apiKey || undefined,
+    // anthropic-messages 且走 Bearer 网关时，用 AUTH_TOKEN 充当 apiKey 通过 pi 的非空检查（实际鉴权靠 model.headers 的 Authorization）
+    getApiKey: () => resolveLlm().apiKey
+      || (resolveLlm().api === "anthropic-messages" ? process.env.ANTHROPIC_AUTH_TOKEN : "")
+      || undefined,
     beforeToolCall,
     transformContext,
     prepareNextTurn,
@@ -458,7 +475,7 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
 
 /** 草案落图（事务式，移植自 orchestrator.py _apply_draft）。
  * 落图后做真实地理解析：节点经高德 searchPoi 补坐标，边按 mode 补距离/时长（失败降级留空）。 */
-async function applyDraft(trip: Trip, draft: any, emit?: (ev: RiddleEvent) => void) {
+async function applyDraft(trip: Trip, draft: any, emit?: (ev: RiddleEvent) => void): Promise<{ from: string; to: string; mode: string; reason: string }[]> {
   const nodes: Trip["nodes"] = {}, edges: Trip["edges"] = {}, events: Trip["events"] = {}, checklist: Trip["checklist"] = {};
   const name2node = new Map<string, any>();
   const nid = (p: string) => `${p}_${Math.random().toString(16).slice(2, 10)}`;
@@ -499,52 +516,94 @@ async function applyDraft(trip: Trip, draft: any, emit?: (ev: RiddleEvent) => vo
   for (const n of nodeList) {
     try {
       const r = await searchPoi(n.name);
-      if (r?.geo) { n.geo = r.geo; n.amap_poi_id = r.amap_poi_id; n.category_tags = r.category_tags ?? []; }
+      if (r?.geo) { n.geo = r.geo; n.amap_poi_id = r.amap_poi_id; n.category_tags = r.category_tags ?? []; n.city = r.city ?? null; }
     } catch { /* 单点失败降级为无坐标，不阻断落图 */ }
     emit?.({ type: "geo", done: ++done, total: nodeList.length });
   }
-  // 边数据补全：驾车走高德真实路线，跨城火车/飞机/大巴走百度（真实班次），geodesic 测地线兜底
-  // （mode 是 LLM 写的自由文本，中英都收：drive/驾车/自驾…）
-  const DRIVE = new Set(["drive", "驾车", "自驾", "开车", "车程", "包车"]);
-  const GEO = new Set(["geodesic", "直线", "测地线"]);
-  const TRAIN = new Set(["train", "railway", "火车", "高铁", "动车", "城际"]);
-  const FLIGHT = new Set(["flight", "plane", "飞机", "航班"]);
-  const COACH = new Set(["coach", "bus", "大巴", "客运", "班车"]);
-  const transitPrefer = (mode: string): IntercityPrefer | null =>
-    TRAIN.has(mode) ? "train" : FLIGHT.has(mode) ? "flight" : COACH.has(mode) ? "coach" : null;
+  // 边数据补全：逐条调用共享解析函数（迁移脚本复用同一策略）
+  for (const e of Object.values(edges)) await resolveEdgeData(e, nodes, events);
+  // 通勤路径完备性收尾：凡有起讫坐标的边保底两点几何（地图不断线）；
+  // 收集缺口（算路降级 / 节点无坐标）返回给调用方，由 LLM 修复或向用户说明
+  const gaps: { from: string; to: string; mode: string; reason: string }[] = [];
   for (const e of Object.values(edges)) {
     const a = nodes[e.from_id]?.geo, b = nodes[e.to_id]?.geo;
-    if (!a || !b) continue;
-    if (DRIVE.has(e.mode)) {
-      try {
-        const r = await drivingRoute(a, b);
-        if (r) { e.distance_m = r.distance_m; e.duration_s = r.duration_s; e.data_source = "amap_driving"; e.geometry = r.geometry ?? []; continue; }
-      } catch { /* 降级测地线 */ }
-      e.distance_m = Math.round(geodesicM(a, b)); e.data_source = "geodesic";
-    } else if (GEO.has(e.mode)) {
-      e.distance_m = Math.round(geodesicM(a, b)); e.data_source = "geodesic";
-    } else {
-      const prefer = transitPrefer(e.mode);
-      if (prefer) {
-        try {
-          const r = await intercityRoute(a, b, prefer);
-          if (r) {
-            e.distance_m = r.distance_m; e.duration_s = r.duration_s;
-            e.data_source = "baidu_transit"; e.geometry = r.geometry;
-            // 主班次信息回填事件（车次号/时刻/票价）——方案质量的关键事实
-            if (r.main) {
-              const ev = Object.values(events).find(x => x.anchor_kind === "edge" && x.anchor_ref === e.edge_id);
-              if (ev) {
-                ev.note = `${nodes[e.from_id].name}→${nodes[e.to_id].name}（${r.main.type === "flight" ? "航班" : r.main.type === "train" ? "车次" : "线路"} ${r.main.name ?? "?"}，${r.main.depart_at ?? "时刻待核"} 发）`;
-                ev.cost = r.main.price ?? r.price;
-              }
-            }
-            continue;
-          }
-        } catch { /* 百度未配置或查询失败：留空待回填 */ }
-      }
+    if (a && b && (!Array.isArray(e.geometry) || e.geometry.length < 2)) {
+      e.geometry = [[a.lng, a.lat], [b.lng, b.lat]];
+    }
+    if (e.data_source === "empty") {
+      const missing = !nodes[e.from_id]?.geo ? nodes[e.from_id]?.name : nodes[e.to_id]?.name;
+      gaps.push({ from: nodes[e.from_id]?.name ?? e.from_id, to: nodes[e.to_id]?.name ?? e.to_id, mode: e.mode, reason: `节点「${missing}」坐标未解析` });
+    } else if (e.data_source === "geodesic" && !GEO.has(e.mode)) {
+      gaps.push({ from: nodes[e.from_id]?.name ?? e.from_id, to: nodes[e.to_id]?.name ?? e.to_id, mode: e.mode, reason: "算路失败，降级为直线估算" });
     }
   }
   trip.nodes = nodes; trip.edges = edges; trip.events = events; trip.checklist = checklist;
   if (!trip.days) trip.days = (draft.days ?? []).length;
+  return gaps;
+}
+
+/* ================= 边数据补全（applyDraft 与迁移脚本共用） =================
+ * 策略：市内通勤（步行/骑行/驾车/公交地铁）必须有真实路径与耗时（高德）；
+ * 跨城火车/飞机/大巴走百度真实班次，失败留空待回填（跨城大交通可推测，不强制真实）；
+ * 未识别的 mode 按直线距离推断（≤1.5km 步行，否则驾车）；市内解析失败降级测地线距离。
+ * （mode 是 LLM 写的自由文本，中英都收：walk/步行…） */
+const DRIVE = new Set(["drive", "驾车", "自驾", "开车", "车程", "包车", "打车", "出租车", "网约车"]);
+const WALK = new Set(["walk", "walking", "步行", "走路", "徒步", "散步", "citywalk"]);
+const BIKE = new Set(["bike", "bicycle", "cycling", "骑行", "骑车", "自行车", "单车", "共享单车"]);
+const CITY = new Set(["metro", "subway", "公交", "地铁", "巴士", "公车", "电车", "公共交通", "bus"]);
+const GEO = new Set(["geodesic", "直线", "测地线"]);
+const TRAIN = new Set(["train", "rail", "railway", "火车", "高铁", "动车", "城际"]);
+const FLIGHT = new Set(["flight", "plane", "飞机", "航班"]);
+const COACH = new Set(["coach", "大巴", "客运", "班车"]);
+const transitPrefer = (mode: string): IntercityPrefer | null =>
+  TRAIN.has(mode) ? "train" : FLIGHT.has(mode) ? "flight" : COACH.has(mode) ? "coach" : null;
+
+/** 单条边的数据源解析（原地修改 e）。events 可选：传入时回填主班次信息到通勤事件。 */
+export async function resolveEdgeData(e: any, nodes: Record<string, any>, events?: Record<string, any>) {
+  const a = nodes[e.from_id]?.geo, b = nodes[e.to_id]?.geo;
+  if (!a || !b) return;
+  const prefer = transitPrefer(e.mode);
+  if (prefer) {
+    try {
+      const r = await intercityRoute(a, b, prefer);
+      if (r) {
+        e.distance_m = r.distance_m; e.duration_s = r.duration_s;
+        e.data_source = "baidu_transit"; e.geometry = r.geometry;
+        e.coord_type = "gcj02"; // v0.3.3 起请求带 ret_coordtype=gcj02，标记免迁移
+        // 主班次信息回填事件（车次号/时刻/票价）——方案质量的关键事实
+        if (r.main && events) {
+          const ev = Object.values(events).find((x: any) => x.anchor_kind === "edge" && x.anchor_ref === e.edge_id) as any;
+          if (ev) {
+            ev.note = `${nodes[e.from_id].name}→${nodes[e.to_id].name}（${r.main.type === "flight" ? "航班" : r.main.type === "train" ? "车次" : "线路"} ${r.main.name ?? "?"}，${r.main.depart_at ?? "时刻待核"} 发）`;
+            ev.cost = r.main.price ?? r.price;
+          }
+        }
+      }
+    } catch { /* 百度未配置或查询失败：留空待回填 */ }
+    return;
+  }
+  if (GEO.has(e.mode)) {
+    e.distance_m = Math.round(geodesicM(a, b)); e.data_source = "geodesic"; return;
+  }
+  // 市内段：按 mode 选数据源；未识别 mode 按距离推断
+  let kind: "walk" | "bike" | "drive" | "transit" | null =
+    WALK.has(e.mode) ? "walk" : BIKE.has(e.mode) ? "bike" : CITY.has(e.mode) ? "transit" : DRIVE.has(e.mode) ? "drive" : null;
+  if (!kind) {
+    kind = geodesicM(a, b) <= 1500 ? "walk" : "drive";
+    e.mode = kind === "walk" ? "步行" : "驾车"; // 推断结果写回，展示与数据源一致
+  }
+  try {
+    const r = kind === "walk" ? await walkingRoute(a, b)
+      : kind === "bike" ? await bicyclingRoute(a, b)
+      : kind === "transit" ? await cityTransitRoute(a, b, nodes[e.from_id].city ?? nodes[e.to_id].city ?? "")
+      : await drivingRoute(a, b);
+    if (r) {
+      e.distance_m = r.distance_m ?? Math.round(geodesicM(a, b));
+      e.duration_s = r.duration_s ?? null;
+      e.data_source = `amap_${kind}`;
+      e.geometry = r.geometry ?? [];
+      return;
+    }
+  } catch { /* 降级测地线 */ }
+  e.distance_m = Math.round(geodesicM(a, b)); e.data_source = "geodesic";
 }

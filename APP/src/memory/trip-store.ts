@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 export const STAGES = ["explore", "planning", "preparing", "ready"] as const;
 export type Stage = typeof STAGES[number];
 
-export interface Node_ { node_id: string; name: string; anchor: "none" | "lodging" | "terminal"; geo?: { lat: number; lng: number } | null; amap_poi_id?: string | null; category_tags?: string[]; opening_hours?: unknown | null; }
+export interface Node_ { node_id: string; name: string; anchor: "none" | "lodging" | "terminal"; geo?: { lat: number; lng: number } | null; amap_poi_id?: string | null; category_tags?: string[]; opening_hours?: unknown | null; city?: string | null; }
 export interface Edge_ { edge_id: string; from_id: string; to_id: string; mode: string; distance_m?: number | null; duration_s?: number | null; data_source: string; geometry?: unknown[]; }
 export interface Event_ { event_id: string; anchor_kind: "node" | "edge"; anchor_ref: string; kind: string; day_refs: number[]; time_window?: { start?: string | null; end?: string | null; source?: string } | null; cost?: number | null; status: "candidate" | "tentative" | "locked"; note: string; }
 export interface ChecklistItem_ { item_id: string; title: string; category: "booking" | "item" | "info"; info_spec?: { what: string; expect: string; impact: string } | null; done: boolean; due_offset_days?: number | null; }
@@ -19,6 +19,8 @@ export interface Trip {
   nodes: Record<string, Node_>; edges: Record<string, Edge_>;
   events: Record<string, Event_>; checklist: Record<string, ChecklistItem_>;
   candidate_pool: Record<string, CandidateItem_>;
+  /** 用户绕过对话的手动操作（如手动勾选清单），注入状态摘要让 LLM 知晓 */
+  user_actions?: { ts: number; text: string }[];
 }
 
 const nid = (p: string) => `${p}_${randomUUID().slice(0, 8)}`;
@@ -28,13 +30,22 @@ export function emptyTrip(): Trip {
     trip_id: nid("trip"), stage: "explore", days: 0, destination: [],
     slots: { destination: [], date_range: null, origin: null, budget_band: null, party: null, pace: null, interests: [], stay_pref: null },
     nodes: {}, edges: {}, events: {}, checklist: {}, candidate_pool: {},
+    user_actions: [],
   };
 }
 
 /** D3 阶段门槛（机械检查，T2） */
+/** destination 读取统一入口：历史数据里 slots.destination 可能是裸字符串，一律按数组取（源头归一在 updateSlot，此处防御旧数据） */
+export function destList(t: Trip): string[] {
+  const v: unknown = t.destination.length ? t.destination : t.slots.destination;
+  if (Array.isArray(v)) return v as string[];
+  if (typeof v === "string" && v.trim()) return [v.trim()];
+  return [];
+}
+
 export function gateReport(t: Trip): { stage: Stage; missing: string[] } {
   const missing: string[] = [];
-  if (!(t.slots.destination as string[])?.length && !t.destination.length) missing.push("S1_destination");
+  if (!destList(t).length) missing.push("S1_destination");
   if (!t.slots.date_range && !t.days) missing.push("S2_date_range");
   let stage: Stage = "explore";
   if (!missing.length) {
@@ -58,12 +69,19 @@ export function tripSummary(t: Trip) {
     candidate_pool: Object.values(t.candidate_pool).map(c => ({ id: c.item_id, name: c.name, status: c.status })),
     checklist: Object.values(t.checklist).map(c => ({ id: c.item_id, title: c.title, done: c.done })),  // 实体级勾选：LLM 依此提 item_id
     checklist_open: Object.values(t.checklist).filter(c => !c.done).length,
+    // 用户手动操作（未经过对话）：让 LLM 知道"这件事人自己干了"，避免重复确认或误判差异
+    user_actions: (t.user_actions ?? []).slice(-5).map(a => a.text),
   };
+}
+
+/** 记录一条用户手动操作（保留最近 8 条） */
+export function recordUserAction(t: Trip, text: string) {
+  t.user_actions = [...(t.user_actions ?? []), { ts: Date.now(), text }].slice(-8);
 }
 
 /** D7 审阅用自然语言方案描述（含 checklist 状态，避免 V7 误报） */
 export function planDesc(t: Trip): string {
-  const lines = [`共${t.days}天，目的地：${t.destination.join("、") || (t.slots.destination as string[])?.join("、") || "未定"}`];
+  const lines = [`共${t.days}天，目的地：${destList(t).join("、") || "未定"}`];
   for (let day = 1; day <= t.days; day++) {
     const evs = Object.values(t.events).filter(e => e.day_refs.includes(day))
       .sort((a, b) => (a.time_window?.start ?? "99").localeCompare(b.time_window?.start ?? "99"));
