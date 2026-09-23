@@ -10,7 +10,7 @@ export type Stage = typeof STAGES[number];
 export interface Node_ { node_id: string; name: string; anchor: "none" | "lodging" | "terminal"; geo?: { lat: number; lng: number } | null; amap_poi_id?: string | null; category_tags?: string[]; opening_hours?: unknown | null; city?: string | null; }
 export interface Edge_ { edge_id: string; from_id: string; to_id: string; mode: string; distance_m?: number | null; duration_s?: number | null; data_source: string; geometry?: unknown[]; }
 export interface Event_ { event_id: string; anchor_kind: "node" | "edge"; anchor_ref: string; kind: string; day_refs: number[]; time_window?: { start?: string | null; end?: string | null; source?: string } | null; cost?: number | null; status: "candidate" | "tentative" | "locked"; note: string; }
-export interface ChecklistItem_ { item_id: string; title: string; category: "booking" | "item" | "info"; info_spec?: { what: string; expect: string; impact: string } | null; done: boolean; due_offset_days?: number | null; }
+export interface ChecklistItem_ { item_id: string; title: string; category: "booking" | "item" | "info"; info_spec?: { what: string; expect: string; impact: string } | null; done: boolean; due_offset_days?: number | null; note?: string | null; }
 export interface CandidateItem_ { item_id: string; name: string; source_material: string; status: "pooled" | "promoted" | "discarded"; }
 
 export interface Trip {
@@ -67,7 +67,7 @@ export function tripSummary(t: Trip) {
     nodes: Object.values(t.nodes).map(n => ({ id: n.node_id, name: n.name, anchor: n.anchor })),
     events: Object.values(t.events).map(e => ({ id: e.event_id, kind: e.kind, days: e.day_refs, tw: e.time_window, status: e.status, note: e.note.slice(0, 80) })),
     candidate_pool: Object.values(t.candidate_pool).map(c => ({ id: c.item_id, name: c.name, status: c.status })),
-    checklist: Object.values(t.checklist).map(c => ({ id: c.item_id, title: c.title, done: c.done })),  // 实体级勾选：LLM 依此提 item_id
+    checklist: Object.values(t.checklist).map(c => ({ id: c.item_id, title: c.title, done: c.done, note: c.note ?? null })),  // 实体级勾选：LLM 依此提 item_id；note 是用户补记的完成细节
     checklist_open: Object.values(t.checklist).filter(c => !c.done).length,
     // 用户手动操作（未经过对话）：让 LLM 知道"这件事人自己干了"，避免重复确认或误判差异
     user_actions: (t.user_actions ?? []).slice(-5).map(a => a.text),
@@ -98,7 +98,7 @@ export function planDesc(t: Trip): string {
     lines.push(`Day${day}: ${parts.join("；")}`);
   }
   const items = Object.values(t.checklist);
-  if (items.length) lines.push(`准备清单：${items.map(c => `${c.title}(${c.done ? "已办" : "待办"})`).join("、")}`);
+  if (items.length) lines.push(`准备清单：${items.map(c => `${c.title}(${c.done ? "已办" : "待办"}${c.note ? `，补记：${c.note}` : ""})`).join("、")}`);
   return lines.join("\n");
 }
 

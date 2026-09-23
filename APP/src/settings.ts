@@ -24,9 +24,20 @@ export interface AppSettings {
   jev: { apiKey: string; baseUrl: string };
   amap: { webServiceKey: string; jsapiKey: string; securityJsCode: string };
   baidu: { webServiceKey: string; jsapiKey: string };   // 预留：下一版地图迁移用
-  map: { active: MapProvider };                          // 实际启用哪个地图数据源（互斥）
+  map: { active: MapProvider; style: string };            // 实际启用哪个地图数据源（互斥）；style = 内置预设名或高德自定义样式 ID
   agent: { watchdogSeconds: number | null };
 }
+
+/** 高德 JSAPI 内置样式预设（无需自定义平台）；自定义样式 ID 走高德「自定义地图平台」发布后填入 */
+export const MAP_STYLE_PRESETS: Record<string, string> = {
+  light: "浅色（默认）",
+  whitesmoke: "白烟",
+  fresh: "清新",
+  macaron: "马卡龙",
+  grey: "雅士灰",
+  darkblue: "极夜蓝",
+  normal: "标准",
+};
 
 interface LlmPreset {
   label: string; api: string; provider: string;
@@ -50,7 +61,7 @@ const BLANK: AppSettings = {
   jev: { apiKey: "", baseUrl: "" },
   amap: { webServiceKey: "", jsapiKey: "", securityJsCode: "" },
   baidu: { webServiceKey: "", jsapiKey: "" },
-  map: { active: "amap" },
+  map: { active: "amap", style: "light" },
   agent: { watchdogSeconds: null },
 };
 
@@ -111,10 +122,12 @@ export function resolveBaiduWebKey() {
   return loadSettings().baidu.webServiceKey || process.env.BAIDU_MAP_AK || process.env.BAIDU_WEB_SERVICE_AK || "";
 }
 
-/** 前端 JSAPI 配置：设置文件优先，缺省回落到 lab01 env.js（由 server 解析传入） */
+/** 前端 JSAPI 配置：设置文件优先，缺省回落到 lab01 env.js（由 server 解析传入）。mapStyle 原样给 JSAPI 的 mapStyle 参数 */
 export function resolveMapConfig(fallback: { key: string; securityJsCode: string }) {
-  const a = loadSettings().amap;
-  return { key: a.jsapiKey || fallback.key, securityJsCode: a.securityJsCode || fallback.securityJsCode };
+const a = loadSettings().amap;
+const style = (loadSettings().map.style || "light").trim();
+// style 是内置预设名（light/whitesmoke/…）或高德自定义平台发布的样式 ID，统一拼成 amap://styles/<值>
+return { key: a.jsapiKey || fallback.key, securityJsCode: a.securityJsCode || fallback.securityJsCode, mapStyle: `amap://styles/${style}`, styleId: style };
 }
 
 export function resolveWatchdogMs() {
@@ -164,7 +177,7 @@ export function publicSettings(lab01Fallback: { key: string; securityJsCode: str
       web: secretInfo(s.baidu.webServiceKey, process.env.BAIDU_MAP_AK ?? process.env.BAIDU_WEB_SERVICE_AK ?? ""),
       jsapi: secretInfo(s.baidu.jsapiKey, ""),
     },
-    map: { active: s.map.active },
+    map: { active: s.map.active, style: s.map.style || "light", stylePresets: MAP_STYLE_PRESETS },
     agent: { watchdogSeconds: s.agent.watchdogSeconds, effectiveWatchdogSeconds: resolveWatchdogMs() / 1000 },
     presets: Object.entries(LLM_PRESETS).map(([id, p]) => ({ id, label: p.label, baseUrl: p.baseUrl, model: p.model })),
   };

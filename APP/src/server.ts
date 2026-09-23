@@ -306,8 +306,10 @@ const server = createServer(async (req, res) => {
       if (body.agent.watchdogSeconds === null) patch.agent.watchdogSeconds = null;
       else if (typeof body.agent.watchdogSeconds === "number" && body.agent.watchdogSeconds > 0 && body.agent.watchdogSeconds <= 3600) patch.agent.watchdogSeconds = body.agent.watchdogSeconds;
     }
-    if (body.map && typeof body.map === "object" && (body.map.active === "amap" || body.map.active === "baidu")) {
-      patch.map = { active: body.map.active };   // 地图数据源互斥切换
+    if (body.map && typeof body.map === "object") {
+      patch.map = {};
+      if (body.map.active === "amap" || body.map.active === "baidu") patch.map.active = body.map.active;   // 地图数据源互斥切换
+      if (typeof body.map.style === "string") patch.map.style = body.map.style.trim().replace(/^amap:\/\/styles\//, "") || "light";  // 容忍粘贴完整 amap://styles/<id>
     }
     saveSettings(patch);
     // 热生效：各运行时的模型对象即时替换（getApiKey/temperature 本就动态解析；Jev/高德 key 每次调用时解析）
@@ -345,6 +347,24 @@ const server = createServer(async (req, res) => {
     item.done = !!body.done;
     recordUserAction(rt.store.trip, `用户手动${item.done ? "勾选" : "取消勾选"}了清单「${item.title}」`);
     rt.store.log("checklist_toggle", { item_id: item.item_id, title: item.title, done: item.done, source: "user" }, undo);
+    rt.store.save();
+    touch(p);
+    broadcast(p, { type: "state_dirty" });
+    return sendJson(res, 200, statePayload(p));
+  }
+  // 用户为清单项补记完成细节（如"酒店订在观前街全季"）：异步 HITL，注入状态摘要让 LLM 下轮感知
+  if (path === "/api/checklist/note" && req.method === "POST") {
+    const p = resolveProject(url);
+    if (!p) return sendJson(res, 404, { error: "project not found" });
+    const body = await readBody(req);
+    const rt = getRt(p);
+    const item = rt.store.trip.checklist[String(body.item_id ?? "")];
+    if (!item) return sendJson(res, 404, { error: "checklist item not found" });
+    const note = String(body.note ?? "").trim().slice(0, 200);
+    const undo = { kind: "restore_trip", trip: JSON.parse(JSON.stringify(rt.store.trip)) }; // 变更前快照
+    item.note = note || null;
+    recordUserAction(rt.store.trip, note ? `用户为清单「${item.title}」补记：${note}` : `用户清空了清单「${item.title}」的补记`);
+    rt.store.log("checklist_note", { item_id: item.item_id, title: item.title, note: item.note, source: "user" }, undo);
     rt.store.save();
     touch(p);
     broadcast(p, { type: "state_dirty" });

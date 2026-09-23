@@ -170,10 +170,16 @@
   .right{flex:1;display:flex;flex-direction:column;min-width:0}
   .map{flex:1.42;position:relative;background:var(--paper);border-bottom:1px solid var(--hair);overflow:hidden}
   #amap{position:absolute;inset:0}
-  .map-legend{position:absolute;bottom:14px;left:16px;background:var(--panel);border:1px solid var(--hair);border-radius:var(--r);box-shadow:0 1px 4px rgba(15,15,15,.06);padding:10px 12px;font-size:11px;color:var(--ink2);line-height:1.9;z-index:5}
-  .map-legend .lg{display:flex;align-items:center;gap:8px}
-  .map-legend .line{width:22px;border-top:3px solid var(--ink);border-radius:2px}
-  .map-legend .line.dot{border-top:2px dotted var(--ink3)}
+.map-legend{position:absolute;bottom:14px;left:16px;background:var(--panel);border:1px solid var(--hair);border-radius:var(--r);box-shadow:0 1px 4px rgba(15,15,15,.06);padding:10px 12px;font-size:11px;color:var(--ink2);line-height:1.9;z-index:5}
+.map-legend .lg{display:flex;align-items:center;gap:8px}
+.map-legend .line{width:22px;border-top:3px solid var(--ink);border-radius:2px}
+.map-legend .line.dot{border-top:2px dotted var(--ink3)}
+.map-legend .lg-head{display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;color:var(--ink3)}
+.map-legend .lg-head:hover{color:var(--ink)}
+.map-legend .lg-head .caret{transition:transform .15s}
+.map-legend.open .lg-head .caret{transform:rotate(90deg)}
+.map-legend .lg-body{display:none}
+.map-legend.open .lg-body{display:block;margin-top:4px}
   .map-tip{position:absolute;display:none;z-index:8;max-width:240px;background:var(--panel);border:1px solid var(--hair);border-radius:8px;box-shadow:0 4px 14px rgba(15,15,15,.12);padding:8px 11px;font-size:11.5px;line-height:1.7;color:var(--ink);pointer-events:none}
   .map-tip b{font-size:12px}
   .map-tip .src{color:var(--ink3);font-size:10.5px}
@@ -217,6 +223,10 @@
   .ck-title{font-size:12.5px;line-height:1.55}
   .ck-spec{margin-top:5px;font-size:11px;color:var(--ink2);line-height:1.65;border-left:1px solid var(--hair);padding-left:9px}
   .ck-spec b{color:var(--ink);font-weight:600;font-family:var(--mono);font-size:11px;letter-spacing:.05em}
+  .ck-note{margin-top:6px}
+  .ck-note input{width:100%;box-sizing:border-box;font-family:var(--sans);font-size:11.5px;color:var(--ink);background:var(--panel);border:1px dashed var(--hair);border-radius:5px;padding:4px 8px;outline:none}
+  .ck-note input:focus{border-color:var(--ink2);border-style:solid}
+  .ck-note input::placeholder{color:var(--ink3)}
   .detail{flex:1;display:flex;flex-direction:column;background:var(--panel)}
   .detail-head{padding:16px 20px 12px;border-bottom:1px solid var(--hair)}
   .detail-head h2{font-family:var(--sans);font-size:16px;font-weight:600}
@@ -253,9 +263,23 @@
   .log-line .tag{width:92px;min-width:92px;font-size:11px;letter-spacing:.05em;padding-top:1px}
   .tag.d1{color:var(--ink2)} .tag.d6{color:var(--accent)} .tag.d7{color:var(--ok)} .tag.d3{color:var(--ink2)} .tag.pend{color:var(--accent)} .tag.tool{color:var(--ink2)} .tag.slot{color:var(--ink2)}
   .log-line .msg{color:#4B4844;flex:1}
-  .prob{background:var(--sel);border-radius:3px;padding:0 4px}
-  .prob.block{background:var(--accent-soft);color:var(--accent)}
-  .prob.pass{background:#EBF3EE;color:var(--ok)}
+.prob{background:var(--sel);border-radius:3px;padding:0 4px}
+.prob.block{background:var(--accent-soft);color:var(--accent)}
+.prob.pass{background:#EBF3EE;color:var(--ok)}
+/* 动态流：筛选 chips + 分类着色 + 可展开技术细节 */
+.cs-filters{display:flex;gap:6px;align-items:center;padding:0 14px;border-right:1px solid var(--hair2)}
+.csf{font-family:var(--mono);font-size:10.5px;color:var(--ink3);border:1px solid var(--hair);border-radius:10px;padding:2px 9px;letter-spacing:.05em}
+.csf.active{color:var(--ink);border-color:var(--ink3);background:var(--panel);font-weight:600}
+#pane-feed[data-filter=judge] .log-line:not(.cat-judge),#pane-feed[data-filter=tool] .log-line:not(.cat-tool),#pane-feed[data-filter=op] .log-line:not(.cat-op){display:none}
+.cat-judge .tag{color:var(--accent)}
+.cat-tool .tag{color:var(--ink2)}
+.cat-op .tag{color:var(--ok)}
+.log-line details.raw{display:inline;margin-left:8px;font-size:10px}
+.log-line details.raw summary{display:inline;cursor:pointer;color:var(--ink3);list-style:none}
+.log-line details.raw summary::before{content:'▸ 细节'}
+.log-line details.raw[open]{display:block;margin:3px 0 1px}
+.log-line details.raw[open] summary::before{content:'▾ 细节'}
+.log-line .raw-body{color:var(--ink3);background:var(--side);border-radius:6px;padding:6px 9px;margin-top:4px;white-space:pre-wrap;word-break:break-all}
   .pend-card{border:1px solid var(--accent);border-radius:10px;padding:16px 18px;max-width:760px;background:var(--panel);margin-bottom:12px}
   .pend-top{display:flex;align-items:center;gap:10px;margin-bottom:10px}
   .pend-kind{font-size:11px;letter-spacing:.12em;background:var(--accent);border-radius:4px;color:#FFF;padding:2px 8px}
@@ -380,14 +404,17 @@
     <div class="map" aria-label="地图">
       <div id="amap"></div>
       <div class="map-empty" id="mapEmpty">方案落图后，点位会出现在这里<br>（坐标来自高德 POI 真实解析）</div>
-      <div class="map-legend">
-        <div class="lg"><span class="line" style="border-top-color:#FF8A00"></span>步行</div>
-        <div class="lg"><span class="line" style="border-top-color:#00B894"></span>骑行</div>
-        <div class="lg"><span class="line" style="border-top-color:#0984E3"></span>驾车</div>
-        <div class="lg"><span class="line" style="border-top-color:#6C5CE7"></span>公交/地铁</div>
-        <div class="lg"><span class="line" style="border-top-color:#D63031"></span>火车/大巴/航班</div>
-        <div class="lg"><span class="line dot"></span>推测弧线 / 待回填</div>
-        <div class="lg">□ 住宿锚点 &nbsp;◇ 场站锚点 &nbsp;● 点位</div>
+      <div class="map-legend open" id="mapLegend">
+        <div class="lg-head" id="mapLegendHead"><span class="caret">▸</span>图例</div>
+        <div class="lg-body">
+          <div class="lg"><span class="line" style="border-top-color:#FF8A00"></span>步行</div>
+          <div class="lg"><span class="line" style="border-top-color:#00B894"></span>骑行</div>
+          <div class="lg"><span class="line" style="border-top-color:#0984E3"></span>驾车</div>
+          <div class="lg"><span class="line" style="border-top-color:#6C5CE7"></span>公交/地铁</div>
+          <div class="lg"><span class="line" style="border-top-color:#D63031"></span>火车/大巴/航班</div>
+          <div class="lg"><span class="line dot"></span>推测弧线 / 待回填</div>
+          <div class="lg">□ 住宿锚点 &nbsp;◇ 场站锚点 &nbsp;● 点位</div>
+        </div>
       </div>
       <div class="map-title">
         <div class="t1" id="mapTitle">未落图</div>
@@ -421,19 +448,21 @@
 <div class="console" id="console" aria-label="决策 console">
   <div class="cs-tabs" role="tablist">
     <button class="cs-tab active" data-pane="pending" role="tab">待确认 <span id="csPendCount">0</span></button>
-    <button class="cs-tab" data-pane="jev" role="tab">Jev 决策流</button>
-    <button class="cs-tab" data-pane="tools" role="tab">工具调用</button>
-    <button class="cs-tab" data-pane="ops" role="tab" id="opsTab">操作日志 0</button>
-    <button class="cs-close" id="csClose">esc 关闭 ✕</button>
+<button class="cs-tab" data-pane="feed" role="tab">动态</button>
+<div class="cs-filters" id="csFilters">
+<button class="csf active" data-cat="all">全部</button>
+<button class="csf" data-cat="judge">判断</button>
+<button class="csf" data-cat="tool">工具</button>
+<button class="csf" data-cat="op">操作</button>
+</div>
+<button class="cs-close" id="csClose">esc 关闭 ✕</button>
   </div>
   <div class="cs-body scroll-thin">
     <div class="cs-pane active" id="pane-pending" aria-live="polite">
       <div class="empty-hint" id="pendEmpty">没有待确认的问题。<br>Jev 拦下的状态变更会排在这里等你点头。</div>
       <div id="pendList"></div>
     </div>
-    <div class="cs-pane" id="pane-jev"></div>
-    <div class="cs-pane" id="pane-tools"></div>
-    <div class="cs-pane" id="pane-ops"></div>
+<div class="cs-pane" id="pane-feed" data-filter="all"></div>
   </div>
 </div>
 <div class="console-bar">
@@ -480,6 +509,9 @@
           <div class="mo-row"><label>JSAPI Key</label><input id="setAmapJs" type="password" autocomplete="off" spellcheck="false"></div>
           <div class="mo-row"><label>安全密钥 securityJsCode</label><input id="setAmapCode" type="password" autocomplete="off" spellcheck="false"></div>
         </div>
+        <div class="mo-row"><label>地图样式</label><select id="setMapStyle" style="flex:1"></select></div>
+        <div class="mo-row" id="mapStyleIdRow" style="display:none"><label>自定义样式 ID</label><input id="setMapStyleId" type="text" spellcheck="false" placeholder="高德「自定义地图平台」发布的样式 ID"></div>
+        <div class="mo-desc">内置预设即选即用（保存后刷新页面生效）；想自己调低饱和/高明度风格，去高德开放平台 → 自定义地图平台调色发布，把样式 ID 填到上面即可。</div>
       </div>
       <div class="mo-sec">
         <div class="mo-sec-h"><h3>百度地图</h3><span><span class="mo-result" id="testBaiduMsg"></span><button class="mo-test" id="testBaidu" type="button">测试连接</button></span></div>
@@ -526,7 +558,7 @@ async function fetchState(){
 }
 function renderAll(){
   if(!S) return;
-  renderHeader(); renderRail(); renderTimeline(); renderPool(); renderPending(); renderOps(); renderStatus(); renderMap(); renderConv();
+  renderHeader(); renderRail(); renderTimeline(); renderPool(); renderPending(); syncOps(); renderStatus(); renderMap(); renderConv();
 }
 
 /* 对话历史：服务端权威（刷新不丢）；发送中的乐观条目以 .temp 标记，响应到达后由权威历史替换 */
@@ -632,8 +664,9 @@ function renderPool(){
       items.forEach(c=>{
         html += `<div class="ck-item ${g==='info'&&!c.done?'risk':''} ${c.done?'done':''}" data-id="${c.item_id}">
           <span class="ck-box" title="点击手动${c.done?'取消勾选':'勾选'}"></span>
-          <div><div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap"><span class="ck-cat">${CAT_LABEL[g]}</span><span class="ck-title">${esc(c.title)}</span></div>
+          <div style="flex:1;min-width:0"><div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap"><span class="ck-cat">${CAT_LABEL[g]}</span><span class="ck-title">${esc(c.title)}</span></div>
           ${c.info_spec?`<div class="ck-spec"><b>查什么</b> ${esc(c.info_spec.what)}<br><b>预期</b> ${esc(c.info_spec.expect)}<br><b>流程</b> ${esc(c.info_spec.impact)}</div>`:''}
+          ${c.done?`<div class="ck-note"><input class="ck-note-input" placeholder="补记一句：订在哪儿 / 买了哪班 / 花了多少…" value="${esc(c.note||'')}"></div>`:(c.note?`<div class="ck-spec"><b>补记</b> ${esc(c.note)}</div>`:'')}
           </div></div>`;
       });
     });
@@ -651,6 +684,25 @@ function renderPool(){
           if(r.ok){ S = { trip:data.trip, pending:data.pending, ops:data.ops, conv:data.conv }; renderAll(); }
         }catch(e){ /* 网络失败保持原状 */ }
       };
+    });
+    // 清单补记（异步 HITL）：勾选后展开输入框，回车/失焦保存；内容进 trip.checklist[].note，
+    // server 记录 user_action 并注入状态摘要——下一轮对话 LLM 即可感知「酒店订在观前街全季」这类完成细节
+    $('poolList').querySelectorAll('.ck-note-input').forEach(inp=>{
+      inp.addEventListener('click', e=>e.stopPropagation());
+      const save = async ()=>{
+        const id = inp.closest('.ck-item').dataset.id;
+        const item = ck.find(x=>x.item_id===id);
+        if(!item) return;
+        const note = inp.value.trim();
+        if(note === (item.note||'')) return;  // 没改动不发请求
+        try{
+          const r = await fetch('/api/checklist/note'+pj(), { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ item_id:id, note }) });
+          const data = await r.json();
+          if(r.ok){ S = { trip:data.trip, pending:data.pending, ops:data.ops, conv:data.conv }; renderAll(); }
+        }catch(e){ /* 网络失败保持原状 */ }
+      };
+      inp.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); inp.blur(); } });
+      inp.addEventListener('blur', save);
     });
   }
 }
@@ -728,7 +780,7 @@ async function initMap(){
     if(!cfg.key) throw new Error('no jsapi key');
     window._AMapSecurityConfig = { securityJsCode: cfg.securityJsCode };
     await loadScript(`https://webapi.amap.com/maps?v=2.0&key=${cfg.key}`);
-    map = new AMap.Map('amap', { zoom: 4.6, center: [104.5, 35.5], mapStyle: 'amap://styles/light', viewMode: '2D' });
+    map = new AMap.Map('amap', { zoom: 4.6, center: [104.5, 35.5], mapStyle: cfg.mapStyle || 'amap://styles/light', viewMode: '2D' });
     mapReady = true;
     renderMap();
   }catch(e){
@@ -827,10 +879,15 @@ csBtn.onclick=()=>toggleConsole();
 $('csClose').onclick=()=>toggleConsole(false);
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){toggleConsole(false);$('setMask').style.display='none';}});
 document.querySelectorAll('.cs-tab').forEach(t=>t.onclick=()=>{
-  document.querySelectorAll('.cs-tab').forEach(x=>x.classList.remove('active'));
-  document.querySelectorAll('.cs-pane').forEach(x=>x.classList.remove('active'));
-  t.classList.add('active');
-  $('pane-'+t.dataset.pane).classList.add('active');
+document.querySelectorAll('.cs-tab').forEach(x=>x.classList.remove('active'));
+document.querySelectorAll('.cs-pane').forEach(x=>x.classList.remove('active'));
+t.classList.add('active');
+$('pane-'+t.dataset.pane).classList.add('active');
+});
+document.querySelectorAll('.csf').forEach(b=>b.onclick=()=>{
+document.querySelectorAll('.csf').forEach(x=>x.classList.remove('active'));
+b.classList.add('active');
+$('pane-feed').dataset.filter = b.dataset.cat;
 });
 
 function renderPending(){
@@ -853,11 +910,32 @@ function renderPending(){
   $('pendList').querySelectorAll('[data-say]').forEach(b=>b.onclick=()=>sendInput(b.dataset.say));
 }
 
-function renderOps(){
-  $('opsTab').textContent = `操作日志 ${S.ops.length}`;
-  $('pane-ops').innerHTML = S.ops.map(r=>
-    `<div class="log-line"><span class="ts">#${String(r.seq).padStart(3,'0')}</span><span class="tag">${esc(r.op)}</span><span class="msg">${esc(r.undo_kind==='restore_trip'?'restore_trip 快照（可回滚）':r.undo_kind||'')}</span></div>`
-  ).join('') || '<div class="empty-hint">还没有状态变更。</div>';
+/* ================= 动态流（三合一）：判断/工具/操作合入同一时间流 =================
+ * 设计：每条一行白话（用户/面试官看得懂），技术细节（置信度/阈值/原始码）折叠在「细节」里（研发用）。
+ * 判断/工具事件走 SSE 实时流入；操作日志不是 SSE 事件，在 fetchState 后按 seq 增量补入（幂等）。 */
+const INTENT_PLAIN = { I1:'提供参考材料', I2:'咨询/闲聊', I3:'声明旅行约束', I4:'修改方案', I5:'确认决定', I6:'汇报准备进度', I7:'补充事实信息', I8:'回滚或重来' };
+const SLOT_PLAIN = { destination:'目的地', date_range:'出行日期', origin:'出发地', budget_band:'预算', party:'同行人', pace:'节奏偏好', interests:'兴趣偏好', stay_pref:'住宿偏好', days:'天数' };
+const R_PLAIN = { R1:'只影响相邻安排', R2:'影响当天整体安排', R3:'影响前后多天' };
+const V_PLAIN = { V1:'时间衔接', V2:'空间可达', V3:'营业时间', V4:'活动归属', V5:'每日起止锚点', V6:'交通耗时', V7:'待办识别' };
+const STAGE_PLAIN = { explore:'探索', planning:'方案规划', preparing:'行前准备', ready:'就绪' };
+const TOOL_PLAIN = { get_trip_state:'查看旅程状态', get_plan_desc:'查看方案描述', search_poi:'查询地点坐标', get_route:'查询通勤路线', update_slot:'更新旅行信息', apply_plan:'方案落图', confirm_progress:'确认准备进度', rollback:'回滚操作', ingest_material:'解析参考材料' };
+const OP_PLAIN = { apply_plan:'方案落图', confirm_progress:'更新准备进度', rollback:'回滚到之前的状态', checklist_toggle:'手动勾选清单', checklist_note:'补记清单内容' };
+function feedLine(cat, tag, plainHtml, rawHtml, ts){
+  const el = document.createElement('div');
+  el.className = `log-line cat-${cat}`;
+  const t = ts ? new Date(ts) : new Date();
+  el.innerHTML = `<span class="ts">${t.toTimeString().slice(0,8)}</span><span class="tag">${tag}</span><span class="msg">${plainHtml}${rawHtml?`<details class="raw"><summary></summary><div class="raw-body">${rawHtml}</div></details>`:''}</span>`;
+  $('pane-feed').prepend(el);
+}
+let lastOpSeq = 0;
+function syncOps(){
+  if(!S) return;
+  for(const r of S.ops){
+    if(r.seq <= lastOpSeq) continue;
+    lastOpSeq = r.seq;
+    feedLine('op', '操作', `${esc(OP_PLAIN[r.op]||r.op)}${r.undo_kind==='restore_trip'?'（已存快照，可回滚）':''}`,
+      r.payload ? esc(JSON.stringify(r.payload)).slice(0,400) : null, r.ts);
+  }
 }
 
 function renderStatus(){
@@ -869,34 +947,30 @@ function renderStatus(){
   $('cbPool').textContent = Object.keys(t.candidate_pool).length;
 }
 
-/* ================= Jev / 工具事件流 ================= */
-function logLine(pane, tagCls, tag, msgHtml, ts){
-  const el = document.createElement('div');
-  el.className = 'log-line';
-  const t = ts ? new Date(ts) : new Date();
-  el.innerHTML = `<span class="ts">${t.toTimeString().slice(0,8)}</span><span class="tag ${tagCls}">${tag}</span><span class="msg">${msgHtml}</span>`;
-  $(pane).prepend(el);
-}
+/* ================= Jev / 工具事件流 → 动态流（白话化） ================= */
 function jevLine(ev){
   if(ev.sub==='意图'){
-    const probs = Object.entries(ev.probs||{}).sort((a,b)=>b[1]-a[1]).slice(0,3)
-      .map(([k,v])=>`${esc(k)} <span class="prob">${Number(v).toFixed(2)}</span>`).join(' · ');
-    logLine('pane-jev','d1','⚖ 意图', `${probs||'（无原始输出）'}${ev.hits?.length?` → 命中 ${esc(ev.hits.join(', '))}`:''}`, ev.ts);
-}else if(ev.sub==='槽位复核'){
-logLine('pane-jev','slot','⚖ 槽位复核',
-`${esc(ev.slot)} ← ${esc(JSON.stringify(ev.value))} · <span class="prob ${ev.pass?'pass':'block'}">${Number(ev.prob).toFixed(2)}</span> ${ev.pass?'≥':'&lt;'} 阈值 → <b>${ev.pass?'pass':'block'}</b>${ev.pass?'':'：文本未明确支持，强制澄清'}`, ev.ts);
-}else if(ev.sub==='清单勾选'){
-logLine('pane-jev','slot','⚖ 清单勾选',
-`「${esc(ev.item)}」 ← 用户原话 · <span class="prob ${ev.pass?'pass':'block'}">${Number(ev.prob).toFixed(2)}</span> ${ev.pass?'≥':'&lt;'} 阈值 → <b>${ev.pass?'勾选':'不勾'}</b>${ev.pass?'':'：原话未明确涵盖，转待确认'}`, ev.ts);
+    const hits=(ev.hits||[]).map(h=>INTENT_PLAIN[h]||h);
+    const raw=Object.entries(ev.probs||{}).sort((a,b)=>b[1]-a[1])
+      .map(([k,v])=>`${k}(${INTENT_PLAIN[k]||k}) ${Number(v).toFixed(2)}`).join(' · ');
+    feedLine('judge','理解意图', hits.length?`判断你在：${hits.join('、')}`:'这句话没有明确的动作意图', raw||null, ev.ts);
+  }else if(ev.sub==='槽位复核'){
+    const slot=SLOT_PLAIN[ev.slot]||ev.slot;
+    feedLine('judge','核实信息', ev.pass?`「${esc(slot)}」说清楚了 ✓`:`「${esc(slot)}」还不够明确 → 需要向你追问`,
+      `槽位 ${esc(ev.slot)} ← ${esc(JSON.stringify(ev.value))} · 置信 ${Number(ev.prob).toFixed(2)} / 阈值 0.6`, ev.ts);
+  }else if(ev.sub==='清单勾选'){
+    feedLine('judge','进度判断', ev.pass?`判断你已完成「${esc(ev.item)}」→ 自动勾选`:`不确定你是否完成「${esc(ev.item)}」→ 先不勾，转待确认`,
+      `匹配置信 ${Number(ev.prob).toFixed(2)} / 阈值 0.7`, ev.ts);
   }else if(ev.sub==='半径判定'){
-    logLine('pane-jev','d6','⚖ 半径判定',
-      `传播范围 ${esc(ev.radius)} · 置信 <span class="prob ${ev.autoApply?'pass':'block'}">${Number(ev.confidence).toFixed(2)}</span> → ${ev.autoApply?'自动执行':'<b>block</b> → 入待确认队列'}`, ev.ts);
+    const r=R_PLAIN[ev.radius]||ev.radius;
+    feedLine('judge','影响评估', ev.autoApply?`这次调整${r} → 系统自动执行`:`这次调整${r} → 需要你点头才能动`,
+      `传播范围 ${esc(ev.radius)} · 置信 ${Number(ev.confidence).toFixed(2)} / 自动执行阈值 0.6`, ev.ts);
   }else if(ev.sub==='校验'){
-    logLine('pane-jev','d7','⚖ 校验',
-      ev.pass ? `apply_plan V1–V7 <span class="prob pass">pass</span> → 落图` : `未通过：${esc((ev.fails||[]).join(', '))} → 回滚重试`, ev.ts);
+    feedLine('judge','落地检查', ev.pass?'方案通过时间/空间/可落地检查 → 画到地图上':`方案未通过检查（${(ev.fails||[]).map(f=>V_PLAIN[String(f).split('_')[0]]||f).join('、')}）→ 打回让模型修正`,
+      ev.pass?null:`未通过项：${esc((ev.fails||[]).join(', '))}`, ev.ts);
   }else if(ev.sub==='挂起消费'){
-    logLine('pane-jev','pend','⚖ 挂起消费',
-      `「${esc(String(ev.question).slice(0,40))}…」消费判定 <span class="prob ${ev.consumed?'pass':'block'}">${Number(ev.prob).toFixed(2)}</span> → ${ev.consumed?'出队，恢复执行':'未回答，继续挂起'}`, ev.ts);
+    feedLine('judge','待确认', ev.consumed?'你的回答解决了之前挂起的问题 → 继续执行':'还没等到挂起问题的答案 → 继续等',
+      `「${esc(String(ev.question).slice(0,60))}」 · 判定置信 ${Number(ev.prob).toFixed(2)}`, ev.ts);
   }
 }
 
@@ -949,12 +1023,12 @@ function liveProg(html){
   nb.scrollTop = nb.scrollHeight;
 }
 function jevBrief(ev){
-  if(ev.sub==='意图') return `⚖ 意图 → ${(ev.hits||[]).join(', ')||'（无命中）'}`;
-  if(ev.sub==='槽位复核') return `⚖ 槽位 ${esc(ev.slot||'')} ${ev.pass?'pass':'block'}`;
-  if(ev.sub==='清单勾选') return `⚖ 清单「${esc(ev.item||'')}」${ev.pass?'勾':'不勾'}`;
-  if(ev.sub==='半径判定') return `⚖ 半径 ${esc(ev.radius||'')} ${ev.autoApply?'自动':'block'}`;
-  if(ev.sub==='校验') return `⚖ 方案校验 ${ev.pass?'pass':'未通过'}`;
-  if(ev.sub==='挂起消费') return `⚖ 挂起 ${ev.consumed?'出队':'继续'}`;
+  if(ev.sub==='意图') return `⚖ 理解意图 → ${(ev.hits||[]).map(h=>INTENT_PLAIN[h]||h).join('、')||'无明确动作'}`;
+  if(ev.sub==='槽位复核') return `⚖ 核实「${SLOT_PLAIN[ev.slot]||esc(ev.slot||'')}」${ev.pass?'✓':'需追问'}`;
+  if(ev.sub==='清单勾选') return `⚖ 进度「${esc(ev.item||'')}」${ev.pass?'已勾选':'先不勾'}`;
+  if(ev.sub==='半径判定') return `⚖ 影响评估 ${ev.autoApply?'自动执行':'需确认'}`;
+  if(ev.sub==='校验') return `⚖ 落地检查 ${ev.pass?'通过':'未通过'}`;
+  if(ev.sub==='挂起消费') return `⚖ 待确认 ${ev.consumed?'已解决':'继续等'}`;
   return `⚖ ${esc(ev.sub||'')}`;
 }
 function toggleConsoleIfUseful(){ /* 保持克制：不自动展开 console */ }
@@ -993,8 +1067,8 @@ function connectSSE(){
   es.onmessage = m=>{
     let ev; try{ ev = JSON.parse(m.data); }catch{ return; }
     if(ev.type==='replay_start'){
-      /* 重连重放：清空流面板与批注，由缓冲事件重建（幂等） */
-      $('pane-jev').innerHTML=''; $('pane-tools').innerHTML='';
+      /* 重连重放：清空动态流与批注，由缓冲事件重建（幂等）；操作日志重 diff 补入 */
+      $('pane-feed').innerHTML=''; lastOpSeq=0;
       nb.querySelectorAll('.jev-note').forEach(n=>n.closest('.entry')?.remove());
       return;
     }
@@ -1003,16 +1077,20 @@ function connectSSE(){
     if(ev.type==='delta'){ liveDelta(ev.text||''); return; }
     if(ev.type==='jev'){ jevLine(ev); liveProg(jevBrief(ev)); return; }
     if(ev.type==='tool'){
-      logLine('pane-tools','tool', esc(ev.name||'tool'),
-        ev.phase==='start' ? '→ 调用中…' : `✓ ${esc((ev.text||'').slice(0,140))}`, ev.ts);
+      const plain=TOOL_PLAIN[ev.name]||ev.name||'工具';
+      feedLine('tool', esc(plain), ev.phase==='start'?'执行中…':'完成 ✓',
+        ev.phase==='start'
+          ? (ev.args?`调用 ${esc(ev.name||'')}，参数：${esc((ev.args||'').slice(0,300))}`:null)
+          : (ev.text?`返回：${esc((ev.text||'').slice(0,300))}`:null), ev.ts);
       liveProg(ev.phase==='start'
-        ? `⚙ <b>${esc(ev.name||'tool')}</b> ${esc((ev.args||'').slice(0,60))}`
-        : `✓ <b>${esc(ev.name||'tool')}</b>`);
+        ? `⚙ <b>${esc(plain)}</b>`
+        : `✓ <b>${esc(plain)}</b>`);
       return;
     }
     if(ev.type==='pending'){
       if(ev.action==='enqueue'){
         addJevNote(`<span class="mono">${esc(PEND_KIND[ev.kind]||ev.kind)}</span> —— ${esc(ev.question)}（到底部 console 或直接回复确认）`);
+        feedLine('judge','待确认', `有个问题需要你决定：${esc(ev.question)}`, `类型 ${esc(ev.kind)}`, ev.ts);
       }else if(ev.action==='consume'){
         consumeNotes();
       }
@@ -1021,7 +1099,7 @@ function connectSSE(){
     }
     if(ev.type==='geo'){ $('mapNote').textContent = `地理解析中 ${ev.done}/${ev.total} · 高德 POI`; liveProg(`🗺 地理解析 ${ev.done}/${ev.total}`); return; }
     if(ev.type==='gate'){
-      logLine('pane-jev','d3','⚖ 阶段门', `机械检查通过 → 阶段推进：<b>${esc(ev.stage)}</b>`, ev.ts);
+      feedLine('judge','阶段推进', `旅程进入「${STAGE_PLAIN[ev.stage]||esc(ev.stage)}」阶段`, null, ev.ts);
       $('stageChip').textContent = ev.stage; $('cbStage').textContent = ev.stage;
       return;
     }
@@ -1063,7 +1141,7 @@ async function enterProject(id){
   projectId = id; localStorage.setItem('riddle.project', id);
   showView('work');
   if(!map && !mapReady && !mapFailed) initMap();  // 地图懒初始化（主页时容器隐藏，不宜建图）
-  $('pane-jev').innerHTML=''; $('pane-tools').innerHTML=''; $('pane-ops').innerHTML='';
+  $('pane-feed').innerHTML=''; lastOpSeq=0;
   await fetchState();
   connectSSE();
 }
@@ -1196,6 +1274,15 @@ function fillSettingsForm(){
   $('setAmapWeb').value = ''; $('setAmapWeb').placeholder = keyPh(SET.amap.web);
   $('setAmapJs').value = ''; $('setAmapJs').placeholder = keyPh(SET.amap.jsapi);
   $('setAmapCode').value = ''; $('setAmapCode').placeholder = keyPh(SET.amap.code);
+  // 地图样式：内置预设直接进下拉；自定义 ID（不在预设表里）选中「自定义」并回填 ID 输入框
+  const styleSel = $('setMapStyle');
+  const presets = SET.map.stylePresets || {};
+  styleSel.innerHTML = Object.entries(presets).map(([id,label])=>`<option value="${id}">${esc(label)}</option>`).join('') + '<option value="__custom">自定义样式 ID…</option>';
+  const curStyle = SET.map.style || 'light';
+  const isCustom = !(curStyle in presets);
+  styleSel.value = isCustom ? '__custom' : curStyle;
+  $('mapStyleIdRow').style.display = isCustom ? '' : 'none';
+  $('setMapStyleId').value = isCustom ? curStyle : '';
   $('setBaiduWeb').value = ''; $('setBaiduWeb').placeholder = keyPh(SET.baidu.web);
   $('setBaiduJs').value = ''; $('setBaiduJs').placeholder = keyPh(SET.baidu.jsapi);
   ['testLlmMsg','testJevMsg','testAmapMsg','testBaiduMsg'].forEach(id=>{ $(id).textContent=''; $(id).className='mo-result'; });
@@ -1213,6 +1300,8 @@ $('btnSettings').onclick = openSettings;
 $('setClose').onclick = $('setCancel').onclick = closeSettings;
 $('setMask').addEventListener('click', e=>{ if(e.target===e.currentTarget) closeSettings(); });
 $('setProvider').addEventListener('change', fillLlmConf);
+$('setMapStyle').addEventListener('change', ()=>{ $('mapStyleIdRow').style.display = $('setMapStyle').value==='__custom' ? '' : 'none'; });
+$('mapLegendHead').onclick = ()=> $('mapLegend').classList.toggle('open');
 $('setSave').onclick = async ()=>{
   const pid = $('setProvider').value;
   const t = $('setTemp').value.trim();
@@ -1223,6 +1312,7 @@ $('setSave').onclick = async ()=>{
     llm: { provider: pid, temperature: t===''?null:+t, conf: { [pid]: { baseUrl: $('setLlmBase').value.trim(), model: $('setLlmModel').value.trim() } } },
     jev: { baseUrl: $('setJevBase').value.trim() },
     amap: {}, baidu: {},
+    map: { style: $('setMapStyle').value==='__custom' ? ($('setMapStyleId').value.trim() || 'light') : $('setMapStyle').value },
     agent: { watchdogSeconds: wd===''?null:+wd },
   };
   const putKey = (sec, k, v)=>{ v=v.trim(); if(v) body[sec][k]=v; };
