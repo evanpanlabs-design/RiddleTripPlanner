@@ -12,6 +12,7 @@
  *   POST /api/projects/reorder      { ids: [...] } → 按数组顺序写入 order
  *   GET  /api/state?project=   → { trip, pending, ops, conv }
  *   POST /api/input?project=   → { text } → 跑一轮 agent.prompt
+*   POST /api/turn/retry?project=     → 0.4.4 网关故障重试卡：带 lastFailedTurn 原输入重跑
  *   POST /api/pending/decide?project= → { id, approve } → 卡片结构化决定：消费 pending + 恢复/放弃挂起操作（0.4.2）
  *   POST /api/reset?project=   → 该项目的 trip 推倒重来
  *   GET  /api/events?project=  → SSE：jev/pending/geo/gate/tool/turn_* 事件流（按项目隔离）
@@ -63,12 +64,14 @@ interface ProjectMeta {
   stage: string;         // 清单卡片展示用，touch 时同步
 }
 interface Project {
-  meta: ProjectMeta;
-  rt?: RiddleRuntime;
-  conv: { role: "user" | "agent"; text: string; ts: number }[];
-  eventLog: Record<string, unknown>[];
-  busy: boolean;
-  sse: Set<ServerResponse>;
+meta: ProjectMeta;
+rt?: RiddleRuntime;
+conv: { role: "user" | "agent"; text: string; ts: number }[];
+eventLog: Record<string, unknown>[];
+busy: boolean;
+sse: Set<ServerResponse>;
+/** 0.4.4 网关故障重试卡：turn 异常终止时记下原输入，UI 弹卡片一键重跑（进度已在 trip.json） */
+lastFailedTurn?: { text: string; error: string; ts: number } | null;
 }
 
 const projects = new Map<string, Project>();
@@ -204,6 +207,7 @@ function statePayload(p: Project) {
     pending: rt.scheduler.list(),
     ops: rt.store.ops.map((r: any) => ({ seq: r.seq, ts: r.ts, op: r.op, undo_kind: r.undo?.kind ?? null, payload: r.payload })),
     conv: p.conv,
+    failedTurn: p.lastFailedTurn ?? null,
   };
 }
 
@@ -244,9 +248,12 @@ async function runTurn(p: Project, text: string, res: ServerResponse) {
     p.conv.push({ role: "agent", text: finalReply, ts: Date.now() });
     persistConv(p);
     touch(p);
+    p.lastFailedTurn = null;
     broadcast(p, { type: "turn_end", reply: finalReply });
     return sendJson(res, 200, { reply: finalReply, ...statePayload(p) });
   } catch (e) {
+    // 0.4.4：异常终止（看门狗 abort / 网关熔断等）记 failedTurn，UI 出重试卡；进度不丢（trip.json 逐 op 落盘）
+    p.lastFailedTurn = { text, error: (e as Error).message, ts: Date.now() };
     broadcast(p, { type: "turn_error", error: (e as Error).message });
     return sendJson(res, 500, { error: (e as Error).message });
   } finally { clearTimeout(wd); p.busy = false; }
@@ -418,6 +425,18 @@ const server = createServer(async (req, res) => {
     p.conv.push({ role: "user", text, ts: Date.now() });
     persistConv(p);
     return runTurn(p, text, res);
+  }
+  // 0.4.4 网关故障重试卡：带原输入重跑失败的那一轮（用户消息已入 conv，不重复记）
+  if (path === "/api/turn/retry" && req.method === "POST") {
+    const p = resolveProject(url);
+    if (!p) return sendJson(res, 404, { error: "project not found" });
+    if (p.busy) return sendJson(res, 409, { error: "agent busy" });
+    const failed = p.lastFailedTurn;
+    if (!failed) return sendJson(res, 400, { error: "没有可重试的失败轮次" });
+    p.lastFailedTurn = null;
+    p.conv.push({ role: "user", text: `↻ 重试上一轮 —— ${failed.text}`, ts: Date.now() });
+    persistConv(p);
+    return runTurn(p, failed.text, res);
   }
   // 0.4.2 卡片真阻塞 HITL：结构化决定（聊天卡片/待确认面板按钮）→ 直接消费 pending（不经 Jev 意图判断），
   // 同意则颁发一次性放行令牌并驱动 agent 恢复被挂起的操作；拒绝则放弃。自然语言回答是兜底路径（transformContext）。
