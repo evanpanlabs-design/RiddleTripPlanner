@@ -182,3 +182,34 @@ export function pinEvent(store: TripStore, eventId: string, pinned: boolean): vo
   e.time_window = { ...(e.time_window ?? { source: "user" }), pinned };
   store.log("pin_event", { event_id: eventId, pinned }, null, { actor: "user" });
 }
+
+// ---------------- apply_plan 分批缓冲（大行程单次提交超输出上限被截断的对策） ----------------
+// 大行程（>40 事件）一次 apply_plan 的 JSON 会撞渠道输出上限被截断 → 永远落不了图。
+// 解法：带 batch:{index,total} 按天分段提交，前 total-1 段只进内存缓冲不校验，
+// 最后一段到达后合并整树走原有校验/落图管线。缓冲只在内存：服务重启后模型会从错误提示得知并从第 1 段重提。
+
+export interface PlanBatchDraft { days: number; events: unknown[]; checklist?: unknown[] }
+export type PlanBatchPush =
+  | { final: false; count: number }
+  | { final: true; merged: Required<PlanBatchDraft> }
+  | { error: string };
+
+const planBatchBuffers = new Map<string, Required<PlanBatchDraft>>();
+
+export function pushPlanBatch(tripId: string, index: number, total: number, draft: PlanBatchDraft): PlanBatchPush {
+  if (!Number.isInteger(index) || !Number.isInteger(total) || total < 2 || index < 1 || index > total) {
+    return { error: `batch 参数非法（index=${index}, total=${total}）：total 须 ≥2 且 1 ≤ index ≤ total` };
+  }
+  if (index === 1) {
+    planBatchBuffers.set(tripId, { days: draft.days, events: [...draft.events], checklist: [...(draft.checklist ?? [])] });
+  } else {
+    const acc = planBatchBuffers.get(tripId);
+    if (!acc) return { error: `第 ${index} 段找不到前序缓冲（服务可能重启过或上批已提交）。请带 batch:{index:1,total:${total}} 从第 1 段重新分批提交` };
+    acc.events.push(...draft.events);
+    acc.checklist.push(...(draft.checklist ?? []));
+  }
+  const acc = planBatchBuffers.get(tripId)!;
+  if (index < total) return { final: false, count: acc.events.length };
+  planBatchBuffers.delete(tripId);
+  return { final: true, merged: acc };
+}

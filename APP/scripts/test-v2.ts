@@ -6,7 +6,7 @@ import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { assembleDraft, checkChainCompleteness, checkPlanQuality, walkTree, type DraftV2, type EventV2, type RouteDetail, type PoiDetail, type OpeningDetail } from "../src/memory/event-v2.ts";
 import { migrateTripV1toV2 } from "../src/memory/migrate-v2.ts";
-import { editEvent, reorderEvents, insertPoiOnRoute, pinEvent, checkTimeConflicts, mergeTimeSovereignty } from "../src/memory/edits.ts";
+import { editEvent, reorderEvents, insertPoiOnRoute, pinEvent, checkTimeConflicts, mergeTimeSovereignty, pushPlanBatch } from "../src/memory/edits.ts";
 import { readEventDoc, writeEventDocLayer } from "../src/memory/event-docs.ts";
 import { TripStore, emptyTrip, type Trip } from "../src/memory/trip-store.ts";
 import { convexHull, douglasPeucker, wgs84ToGcj02 } from "../src/tools/osm-aoi.ts";
@@ -318,6 +318,26 @@ const mkRoute = (id: string, from: string, to: string, seq: number): EventV2 => 
     const d3 = readEventDoc(tmp3, ev);
     ok(d3.llm === "覆盖 C" && d3.user === "", "doc：清空用户层不动 LLM 层");
   } finally { rmSync(tmp3, { recursive: true, force: true }); }
+}
+// apply_plan 分批缓冲（大行程输出截断对策）：累积 → 末段合并；缺前段报错；index=1 重置
+{
+  const T = "_test_batch_trip";
+  const d1 = { days: 7, events: [{ tmp_id: "e1" }, { tmp_id: "e2" }] };
+  const r1 = pushPlanBatch(T, 1, 3, d1);
+  ok("final" in r1 && !r1.final && r1.count === 2, "batch：第 1 段进缓冲不落地", JSON.stringify(r1));
+  const r2 = pushPlanBatch(T, 2, 3, { days: 7, events: [{ tmp_id: "e3" }] });
+  ok("final" in r2 && !r2.final && r2.count === 3, "batch：第 2 段累积", JSON.stringify(r2));
+  const r3 = pushPlanBatch(T, 3, 3, { days: 7, events: [{ tmp_id: "e4" }], checklist: [{ title: "c1" }] });
+  ok("final" in r3 && r3.final && r3.merged.events.length === 4 && r3.merged.checklist.length === 1 && r3.merged.days === 7, "batch：末段合并整树", JSON.stringify(r3));
+  const r4 = pushPlanBatch(T, 2, 2, { days: 7, events: [] });
+  ok("error" in r4, "batch：缺前段报错", JSON.stringify(r4));
+  const r5 = pushPlanBatch(T, 0, 3, d1);
+  ok("error" in r5, "batch：非法 index 报错", JSON.stringify(r5));
+  pushPlanBatch(T, 1, 3, d1); // 留半批
+  const r6 = pushPlanBatch(T, 1, 2, { days: 3, events: [{ tmp_id: "x" }] });
+  ok("final" in r6 && !r6.final && r6.count === 1, "batch：新 index=1 重置残留缓冲", JSON.stringify(r6));
+  const r7 = pushPlanBatch(T, 2, 2, { days: 3, events: [{ tmp_id: "y" }] });
+  ok("final" in r7 && r7.final && r7.merged.events.length === 2 && r7.merged.days === 3, "batch：重置后正常合并", JSON.stringify(r7));
 }
 
 console.log(`\n结果：${pass} 通过，${fail} 失败`);
