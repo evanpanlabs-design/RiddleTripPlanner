@@ -194,6 +194,16 @@
   #evEdit input:focus,#evEdit select:focus{border-color:var(--ink3)}
   #evEdit .ea{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}
   #evEdit .emsg{font-size:11px;color:var(--accent);margin-right:auto;align-self:center}
+  /* 0.5 e5 档案悬浮页（复用弹层语言，更宽） */
+  #evDoc{position:fixed;z-index:60;width:330px;max-height:420px;overflow-y:auto;background:#FFF;border:1px solid var(--hair);border-radius:10px;box-shadow:0 10px 30px rgba(15,15,15,.16);padding:12px 14px;display:none}
+  #evDoc h4{font-size:12.5px;margin:0 0 10px;font-weight:600}
+  #evDoc .dl{font-size:11px;color:var(--ink3);font-family:var(--mono);margin:8px 0 4px}
+  #evDoc .dl-llm{font-size:12px;color:var(--ink2);background:var(--side);border-radius:8px;padding:8px 10px;line-height:1.6}
+  #evDoc .dl-llm .emsg{color:var(--ink3)}
+  #evDoc textarea{width:100%;min-height:76px;border:1px solid var(--hair);border-radius:6px;padding:6px 8px;font-size:12px;font-family:var(--sans);outline:none;resize:vertical;box-sizing:border-box}
+  #evDoc textarea:focus{border-color:var(--ink3)}
+  #evDoc .ea{display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
+  #evDoc .emsg{font-size:11px;color:var(--accent);margin-right:auto;align-self:center}
   .tl-days{flex:1;overflow-y:auto;padding:6px 22px 24px}
   .tl-day{padding:14px 0;border-bottom:1px solid var(--hair2)}
   .tl-day-head{display:flex;align-items:baseline;gap:10px;margin-bottom:8px}
@@ -458,6 +468,8 @@
 
   <!-- 0.5 事件编辑弹层（时间/备注/交通方式） -->
   <div id="evEdit" role="dialog" aria-label="编辑事件"></div>
+  <!-- 0.5 e5 事件档案悬浮页（LLM 层只读 + 用户层可编辑） -->
+  <div id="evDoc" role="dialog" aria-label="事件档案"></div>
 
   <!-- ================= 右区 ================= -->
   <section class="right">
@@ -754,7 +766,7 @@ function renderTimeline(){
   const cfIds = new Set((S.conflicts||[]).flatMap(c=>c.ids||[]));
   const cfMsg = id => (S.conflicts||[]).filter(c=>(c.ids||[]).includes(id)).map(c=>c.message).join('；');
   /* 0.5 操作钮：poi/aoi = 编辑+图钉，route = 编辑+插入点位；拖拽仅顶层 */
-  const acts = e=>`<span class="acts">${e.kind==='route'?`<button data-act="ins" title="在这段通勤上插入点位">⊕</button>`:''}<button data-act="edit" title="编辑">✎</button>${e.kind!=='route'?`<button data-act="pin" class="${e.time_window?.pinned?'pin-on':''}" title="${e.time_window?.pinned?'拔钉（允许 LOOP 调整）':'钉住（LOOP 免碰）'}">${e.time_window?.pinned?'📌':'📍'}</button>`:''}</span>`;
+  const acts = e=>`<span class="acts">${e.kind==='route'?`<button data-act="ins" title="在这段通勤上插入点位">⊕</button>`:''}<button data-act="edit" title="编辑">✎</button><button data-act="doc" title="档案（LLM 笔记 + 我的笔记）">📄</button>${e.kind!=='route'?`<button data-act="pin" class="${e.time_window?.pinned?'pin-on':''}" title="${e.time_window?.pinned?'拔钉（允许 LOOP 调整）':'钉住（LOOP 免碰）'}">${e.time_window?.pinned?'📌':'📍'}</button>`:''}</span>`;
   const row = (e, nested)=>{
     const cls = e.kind==='route' ? 'transit' : (e.kind==='poi' ? 'poi' : '');
     const pin = e.time_window?.pinned ? '<span class="pin-mark">📌</span>' : '';
@@ -1421,6 +1433,33 @@ function handleEvAct(act, id, anchor){
     if(name?.trim()) apiEdit('/api/events/insert-on-route', { route_id: id, name: name.trim() });
   }
   else if(act==='edit') openEvEdit(e, anchor);
+  else if(act==='doc') openEvDoc(e, anchor);
+}
+/* 0.5 e5 档案悬浮页：LLM 层只读，用户层可编辑保存（PUT 只写用户层） */
+async function openEvDoc(e, anchor){
+  const box = $('evDoc');
+  box.innerHTML = '<h4>📄 '+esc(e.name)+'</h4><div class="emsg">读取中…</div>';
+  const r0 = anchor.getBoundingClientRect();
+  box.style.display = 'block';
+  box.style.left = Math.min(r0.left, innerWidth - 350) + 'px';
+  box.style.top = Math.min(r0.bottom + 6, innerHeight - 340) + 'px';
+  const r = await fetch(`/api/events/${e.event_id}/doc`+pj());
+  const data = await r.json();
+  if(!r.ok){ box.innerHTML = '<h4>📄 '+esc(e.name)+'</h4><div class="emsg">'+esc(data.error||'读取失败')+'</div>'; return; }
+  const doc = data.doc;
+  box.innerHTML = `<h4>📄 ${esc(e.name)}</h4>
+    <div class="dl">Riddle 的笔记（只读）</div>
+    <div class="dl-llm">${doc.llm?md(esc(doc.llm)):'<span class="emsg">还没有——Riddle 会在积累攻略/判断依据后写入</span>'}</div>
+    <div class="dl">我的笔记</div>
+    <textarea id="edUser" placeholder="随手记：预约方式、朋友推荐、注意事项…">${esc(doc.user||'')}</textarea>
+    <div class="ea"><span class="emsg" id="edMsg"></span><button class="btn ghost" id="edClose">关闭</button><button class="btn" id="edSave">保存</button></div>`;
+  $('edClose').onclick = ()=>{ box.style.display = 'none'; };
+  $('edSave').onclick = async ()=>{
+    const rr = await fetch(`/api/events/${e.event_id}/doc`+pj(), { method:'PUT', headers:{'content-type':'application/json'}, body: JSON.stringify({ markdown: $('edUser').value }) });
+    const dd = await rr.json();
+    if(rr.ok){ $('edMsg').textContent = '已保存'; setTimeout(()=>{ box.style.display='none'; }, 400); }
+    else $('edMsg').textContent = dd.error || '保存失败';
+  };
 }
 const ROUTE_MODES = ['步行','骑行','公交','地铁','驾车','火车','飞机','大巴'];
 function openEvEdit(e, anchor){
@@ -1450,8 +1489,10 @@ function openEvEdit(e, anchor){
 }
 // 点别处收起弹层
 document.addEventListener('mousedown', e=>{
-  const box = $('evEdit');
-  if(box.style.display==='block' && !box.contains(e.target) && !e.target.closest('.acts')) box.style.display = 'none';
+  for(const id of ['evEdit','evDoc']){
+    const box = $(id);
+    if(box.style.display==='block' && !box.contains(e.target) && !e.target.closest('.acts')) box.style.display = 'none';
+  }
 });
 /* 拖拽重排：仅顶层事件（嵌套子事件不重排）；落点在上半=插到目标前，下半=插到后 */
 let tlDragId = null;

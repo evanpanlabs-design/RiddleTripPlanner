@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { assembleDraft, checkChainCompleteness, checkPlanQuality, walkTree, type DraftV2, type EventV2, type RouteDetail, type PoiDetail, type OpeningDetail } from "../src/memory/event-v2.ts";
 import { migrateTripV1toV2 } from "../src/memory/migrate-v2.ts";
 import { editEvent, reorderEvents, insertPoiOnRoute, pinEvent, checkTimeConflicts, mergeTimeSovereignty } from "../src/memory/edits.ts";
+import { readEventDoc, writeEventDocLayer } from "../src/memory/event-docs.ts";
 import { TripStore, emptyTrip, type Trip } from "../src/memory/trip-store.ts";
 import { convexHull, douglasPeucker, wgs84ToGcj02 } from "../src/tools/osm-aoi.ts";
 
@@ -298,6 +299,25 @@ const mkRoute = (id: string, from: string, to: string, seq: number): EventV2 => 
   ok(q.advisories.filter(a => a.code === "Q4_MOBILITY").length === 1 && q.advisories[0].message.includes("公交"), "Q4：自驾槽位下公交段建议级提示", JSON.stringify(q.advisories));
   ok(q.hard.length === 0, "Q4：只是建议级不进硬校验");
   ok(checkPlanQuality(evs, { days: 1, mobility: "general" }).advisories.every(a => a.code !== "Q4_MOBILITY"), "Q4：general 不查");
+}
+// event-docs（e5）：双层读写互不影响，写一层保留另一层
+{
+  const tmp3 = join(import.meta.dirname, "../runs/_test_docs_tmp");
+  mkdirSync(tmp3, { recursive: true });
+  try {
+    const ev = { event_id: "e1", name: "九寨沟" };
+    ok(readEventDoc(tmp3, ev).exists === false, "doc：不存在时 exists=false");
+    writeEventDocLayer(tmp3, ev, "llm", "攻略要点 A");
+    writeEventDocLayer(tmp3, ev, "user", "我的笔记 B");
+    const d = readEventDoc(tmp3, ev);
+    ok(d.exists && d.llm === "攻略要点 A" && d.user === "我的笔记 B", "doc：双层都写入可读", JSON.stringify(d));
+    writeEventDocLayer(tmp3, ev, "llm", "覆盖 C");
+    const d2 = readEventDoc(tmp3, ev);
+    ok(d2.llm === "覆盖 C" && d2.user === "我的笔记 B", "doc：写 LLM 层不动用户层");
+    writeEventDocLayer(tmp3, { event_id: "e1", name: "九寨沟（改名）" }, "user", "");
+    const d3 = readEventDoc(tmp3, ev);
+    ok(d3.llm === "覆盖 C" && d3.user === "", "doc：清空用户层不动 LLM 层");
+  } finally { rmSync(tmp3, { recursive: true, force: true }); }
 }
 
 console.log(`\n结果：${pass} 通过，${fail} 失败`);

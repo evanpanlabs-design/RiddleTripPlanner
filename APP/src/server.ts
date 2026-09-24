@@ -31,6 +31,7 @@ import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync, rmS
 import { createRiddleAgent, buildModel, type RiddleRuntime } from "./agent.ts";
 import { TripStore, emptyTrip, destList, recordUserAction, type Trip } from "./memory/trip-store.ts";
 import { editEvent, reorderEvents, insertPoiOnRoute, pinEvent, checkTimeConflicts } from "./memory/edits.ts";
+import { readEventDoc, writeEventDocLayer } from "./memory/event-docs.ts";
 import { LLM_PRESETS, loadSettings, saveSettings, publicSettings, resolveMapConfig, resolveWatchdogMs, type LlmProvider } from "./settings.ts";
 import { testConnection } from "./settings-test.ts";
 
@@ -444,6 +445,22 @@ const server = createServer(async (req, res) => {
     p.conv.push({ role: "user", text: `↻ 重试上一轮 —— ${failed.text}`, ts: Date.now() });
     persistConv(p);
     return runTurn(p, failed.text, res);
+  }
+  // 0.5 e5 event wiki：GET 读双层文档 / PUT 写用户层（LLM 层只能 agent 工具写）
+  const docMatch = /^\/api\/events\/([^/]+)\/doc$/.exec(path);
+  if (docMatch && (req.method === "GET" || req.method === "PUT")) {
+    const p = resolveProject(url);
+    if (!p) return sendJson(res, 404, { error: "project not found" });
+    const rt = getRt(p);
+    const ev = rt.store.trip.events_v2?.[docMatch[1]];
+    if (!ev) return sendJson(res, 404, { error: "事件不存在" });
+    if (req.method === "GET") return sendJson(res, 200, { doc: readEventDoc(rt.store.dir, ev) });
+    if (p.busy) return sendJson(res, 409, { error: "agent busy，等这轮跑完再改" });
+    const body = await readBody(req);
+    const doc = writeEventDocLayer(rt.store.dir, ev, "user", String(body.markdown ?? ""));
+    rt.store.log("event_doc_user", { event_id: ev.event_id, name: ev.name, chars: doc.user.length }, null, { actor: "user" });
+    touch(p);
+    return sendJson(res, 200, { doc });
   }
   // ---------- 0.5 共创编辑器：同步编辑 API（落 op 不触发 LLM 轮；busy 时拒绝防并发改图） ----------
   const evMatch = /^\/api\/events\/([^/]+)(\/pin)?$/.exec(path);

@@ -16,6 +16,7 @@ import { TH, d4ChecklistMatchQuestions } from "./jev/questions.ts";
 import { TripStore, tripSummary, planDesc, gateReport, destList, type Trip } from "./memory/trip-store.ts";
 import { assembleDraft, checkChainCompleteness, checkPlanQuality, isAoi, isPoi, isRoute, childrenOf, type DraftV2, type EventV2, type RouteEvent, type AoiEvent, type PoiEvent } from "./memory/event-v2.ts";
 import { mergeTimeSovereignty, checkTimeConflicts } from "./memory/edits.ts";
+import { readEventDoc, writeEventDocLayer } from "./memory/event-docs.ts";
 import { enrichFromBaidu } from "./tools/baidu-place.ts";
 import { fetchAoiBoundary, convexHull } from "./tools/osm-aoi.ts";
 import { Scheduler, type PendingQuestion } from "./scheduler/scheduler.ts";
@@ -368,10 +369,41 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
     },
   };
 
-  const tools = [getTripState, planDescTool, searchPoiTool, routeTool, updateSlot, ingestMaterial, applyPlan, confirmProgress, rollback];
+  // 0.5 e5 event wiki：每事件一份双层 Markdown（runs/<trip>/docs/<event_id>.md）。
+  // read 两层都读；write 只能写 llm 层（用户层归前台 PUT /api/events/:id/doc）。
+  const readEventDocTool: AgentTool = {
+    name: "read_event_doc",
+    label: "读事件档案",
+    description: "读某个事件的档案文档（LLM 层笔记 + 用户层笔记）。修改方案前先读相关事件档案，尊重用户层内容。",
+    parameters: Type.Object({ event_id: Type.String() }),
+    execute: async (_id: string, params: any) => {
+      const ev = store.trip.events_v2?.[String(params.event_id ?? "")];
+      if (!ev) return { content: [{ type: "text", text: `事件不存在：${params.event_id}` }], details: {} };
+      const doc = readEventDoc(store.dir, ev);
+      const text = doc.exists
+        ? `「${ev.name}」档案：\n[LLM 层]\n${doc.llm || "（空）"}\n[用户层]\n${doc.user || "（空）"}`
+        : `「${ev.name}」还没有档案，可用 write_event_doc 创建。`;
+      return { content: [{ type: "text", text }], details: { doc } };
+    },
+  };
+  const writeEventDocTool: AgentTool = {
+    name: "write_event_doc",
+    label: "写事件档案",
+    description: "把攻略要点/判断依据/注意事项写进事件档案的 LLM 层（用户层由用户自己维护，不可写）。覆盖式写入该层，不是追加。",
+    parameters: Type.Object({ event_id: Type.String(), markdown: Type.String() }),
+    execute: async (_id: string, params: any) => {
+      const ev = store.trip.events_v2?.[String(params.event_id ?? "")];
+      if (!ev) return { content: [{ type: "text", text: `事件不存在：${params.event_id}` }], details: {} };
+      const doc = writeEventDocLayer(store.dir, ev, "llm", String(params.markdown ?? ""));
+      store.log("event_doc_llm", { event_id: ev.event_id, name: ev.name, chars: doc.llm.length }, null, { actor: "llm" });
+      return { content: [{ type: "text", text: `已写入「${ev.name}」档案 LLM 层（${doc.llm.length} 字）。用户层保持原样。` }], details: {} };
+    },
+  };
+
+  const tools = [getTripState, planDescTool, searchPoiTool, routeTool, updateSlot, ingestMaterial, applyPlan, confirmProgress, rollback, readEventDocTool, writeEventDocTool];
 
   // ---------------- Jev 注入点 1：beforeToolCall 门禁 ----------------
-  const STATE_CHANGING = new Set(["update_slot", "apply_plan", "confirm_progress", "rollback"]);
+  const STATE_CHANGING = new Set(["update_slot", "apply_plan", "confirm_progress", "rollback", "write_event_doc"]);
   // 规范化比较：标量/数组统一包成数组再比（"九寨沟" 与 ["九寨沟"] 语义相同，不算覆盖）
   const canon = (v: any): string => JSON.stringify((Array.isArray(v) ? v : [v]).map((i: any) => (typeof i === "string" ? i.trim() : i)));
   // 一次性放行令牌：pending 被用户确认后颁发，恢复执行时门禁不再重复拦截同一操作
