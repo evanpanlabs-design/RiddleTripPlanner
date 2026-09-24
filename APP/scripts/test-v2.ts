@@ -247,6 +247,22 @@ const mkRoute = (id: string, from: string, to: string, seq: number): EventV2 => 
     ok(st.trip.events_v2!.p1.time_window?.pinned === false, "pin：拔钉");
   } finally { rmSync(tmp2, { recursive: true, force: true }); }
 }
+// undoUntil：快照后夹带无 undo 载荷的留痕 op 时，单次 undo 会错 pop——必须吃到快照 op 弹出为止
+{
+  const tmp4 = join(import.meta.dirname, "../runs/_test_undo_tmp");
+  mkdirSync(tmp4, { recursive: true });
+  try {
+    const t = emptyTrip();
+    t.events_v2 = { p1: mkPoi("p1", "甲", 1, "09:00") };
+    const st = new TripStore(t, tmp4);
+    st.snapshot("apply_plan");
+    const snapSeq = st.ops.length;
+    st.trip.events_v2!.p1.name = "被草案改名";
+    st.log("soft_time_override", { overrides: ["x"] }, null); // 留痕 op（undo=null）夹带在快照之后
+    st.undoUntil(snapSeq);
+    ok(st.trip.events_v2!.p1.name === "甲" && st.ops.length === snapSeq - 1, "undoUntil：留痕+快照一起吃干净，状态还原", JSON.stringify({ name: st.trip.events_v2!.p1.name, ops: st.ops.length }));
+  } finally { rmSync(tmp4, { recursive: true, force: true }); }
+}
 // checkTimeConflicts 按日分桶：不同日的同名时段不算重叠（修复跨天误报）
 {
   const evs: Record<string, EventV2> = {

@@ -252,9 +252,10 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
         return { content: [{ type: "text", text: `草案结构校验未通过，未落图。你必须在本轮内按下列修复指引修正后，重新调用 apply_plan 提交完整草案（不要只回复文字，也不要放弃提交）：\n${pre.errors.map(e => `- [${e.code}] ${e.message}`).join("\n")}${retryHint}` }], details: { errors: pre.errors } };
       }
       store.snapshot("apply_plan");
+      const snapSeq = store.ops.length; // 快照 op 的位次：失败回滚必须连快照后产生的一切 op（如 soft_time_override 留痕）一起吃干净
       const applied = await applyDraftV2(store, draft as DraftV2, emit);
       if (!applied.ok) { // 与 dryRun 之间无并发变更，理论不可达；防御
-        store.undo();
+        store.undoUntil(snapSeq);
         return { content: [{ type: "text", text: `草案结构校验未通过：${applied.errors.map(e => e.message).join("；")}` }], details: {} };
       }
       store.save(); // 落图后立即落盘：校验或系统异常崩溃不丢方案（校验失败路径 undo 会再纠正）
@@ -287,7 +288,7 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
       store.trip.stage = gateReport(store.trip).stage;
       store.save();
       if (fails.length) {
-        store.undo();
+        store.undoUntil(snapSeq);
         const probStr = fails.map(f => `${f}=${(probs[f] ?? 0).toFixed(2)}`).join(", ");
         const v8Str = v8.length ? `。链条缺失：${v8.map(e => e.message).join("；")}` : "";
         const q3Str = quality.hard.length ? `。营业时段冲突：${quality.hard.map(q => q.message).join("；")}` : "";
@@ -353,12 +354,19 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
     },
   };
 
+  // 0.5 数据安全闸：rollback 只允许撤销本轮内产生的 op。
+  // 事故教训：模型曾把 rollback 当"重提前重置"用，连着吃掉了上一轮的 apply_plan 落图 op 和素材入池 op，
+  // 整棵事件树被还原清空。历史 op（素材入池/往轮落图/用户编辑）绝不是模型该碰的。
+  const turnStartOps = store.ops.length;
   const rollback: AgentTool = {
     name: "rollback",
     label: "回滚",
-    description: "撤销最近一次状态变更操作。",
+    description: "撤销本轮内你刚做的最近一次状态变更。注意：只能回滚本轮的操作；apply_plan 校验打回不产生任何状态变更，无需也无法回滚——直接修正重提即可。",
     parameters: Type.Object({}),
     execute: async () => {
+      if (store.ops.length <= turnStartOps) {
+        return { content: [{ type: "text", text: "本轮还没有可回滚的操作。rollback 只能撤销你本轮刚做的变更，不能回退历史操作（素材入池/往轮落图/用户编辑）。apply_plan 校验打回本身不产生状态变更，无需回滚——直接修正后重新提交即可。" }], details: {} };
+      }
       const rec = store.undo();
       return { content: [{ type: "text", text: rec ? `已回滚 #${rec.seq}（${rec.op}）` : "无可回滚操作" }], details: {} };
     },

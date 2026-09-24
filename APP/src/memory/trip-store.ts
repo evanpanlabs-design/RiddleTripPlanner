@@ -172,4 +172,11 @@ export class TripStore {
     this.save();
     return rec;
   }
+
+  /** 连续撤销直到日志长度 < seq。配合 snapshot 使用：快照后可能夹带无 undo 载荷的留痕 op
+   * （如 apply_plan 落图时的 soft_time_override），单次 undo 会错 pop 留痕而漏掉快照——
+   * 必须吃到快照 op 被弹出为止，状态才真正还原。 */
+  undoUntil(seq: number): void {
+    while (this.applied.length >= seq) this.undo();
+  }
 }
