@@ -28,6 +28,10 @@ export interface AppSettings {
   agent: { watchdogSeconds: number | null };
   /** 速率限制（0.4.4）：null = 默认/不限。llmRpm 作用于后台判断器（llm-judge）的密集调用；主对话流天然低速不限制 */
   limits: { llmRpm: number | null; amapQps: number | null; baiduQps: number | null };
+  /** 可选搜索（0.5 e7，默认关）。调研结论：Friday anthropic-messages 渠道不自带搜索；
+   * Friday 通用搜索（内部基建，需应用工厂 MCP 鉴权+按千次计费）与 Tavily（外部 key）都未接入，
+   * 这里只占位设置项——enabled=true 目前不产生任何效果，实现前需先过合规与鉴权接入。 */
+  search: { enabled: boolean; provider: "friday-search" | "tavily" | null };
 }
 
 /** 高德 JSAPI 内置样式预设（无需自定义平台）；自定义样式 ID 走高德「自定义地图平台」发布后填入 */
@@ -66,6 +70,7 @@ const BLANK: AppSettings = {
   map: { active: "amap", style: "light" },
   agent: { watchdogSeconds: null },
   limits: { llmRpm: null, amapQps: null, baiduQps: null },
+  search: { enabled: false, provider: null },
 };
 
 let cache: AppSettings | null = null;
@@ -195,6 +200,7 @@ export function publicSettings(lab01Fallback: { key: string; securityJsCode: str
     map: { active: s.map.active, style: s.map.style || "light", stylePresets: MAP_STYLE_PRESETS },
     agent: { watchdogSeconds: s.agent.watchdogSeconds, effectiveWatchdogSeconds: resolveWatchdogMs() / 1000 },
     limits: { ...s.limits, effective: resolveLimits() },
+    search: { ...s.search, implemented: false }, // 0.5 e7：占位，未接入实现
     presets: Object.entries(LLM_PRESETS).map(([id, p]) => ({ id, label: p.label, baseUrl: p.baseUrl, model: p.model })),
   };
 }
