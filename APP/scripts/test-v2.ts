@@ -6,6 +6,7 @@ import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { assembleDraft, checkChainCompleteness, checkPlanQuality, walkTree, type DraftV2, type EventV2, type RouteDetail, type PoiDetail, type OpeningDetail } from "../src/memory/event-v2.ts";
 import { migrateTripV1toV2 } from "../src/memory/migrate-v2.ts";
+import { editEvent, reorderEvents, insertPoiOnRoute, pinEvent } from "../src/memory/edits.ts";
 import { TripStore, emptyTrip, type Trip } from "../src/memory/trip-store.ts";
 import { convexHull, douglasPeucker, wgs84ToGcj02 } from "../src/tools/osm-aoi.ts";
 
@@ -200,6 +201,51 @@ for (let i = 1; i <= 4; i++) gapDay[`g${i}`] = mkPoi(`g${i}`, `点位${i}`, 1, `
 gapDay.g5 = mkPoi("g5", "收尾", 3, "10:00");
 ok(checkPlanQuality(gapDay, { days: 3 }).advisories.some(q => q.code === "Q2_INTENSITY" && q.message.includes("Day2")), "Q2：中间天空置 → 强度不均提示");
 ok(checkPlanQuality(bt, { days: 1 }).hard.length === 0, "Q 族整体：正常方案无硬冲突");
+
+// ---------- 0.5 共创编辑器：编辑 op（edits.ts） ----------
+console.log("== 0.5 编辑 op ==");
+const mkRoute = (id: string, from: string, to: string, seq: number): EventV2 => ({
+  event_id: id, kind: "route", name: `${from}→${to}`, parent_id: null, seq, day_refs: [1],
+  time_window: { start: "08:00", end: "09:00", source: "llm_inference" as const }, cost: null,
+  status: "active", provenance: "llm_inference",
+  detail: { mode: "驾车", from_ref: from, to_ref: to, geometry: [], data_source: "amap_drive" as const },
+});
+{
+  const tmp2 = join(import.meta.dirname, "../runs/_test_edits_tmp");
+  mkdirSync(tmp2, { recursive: true });
+  try {
+    const t = emptyTrip();
+    t.days = 1;
+    t.events_v2 = { p1: mkPoi("p1", "甲", 1, "09:00"), p2: mkPoi("p2", "乙", 1, "14:00"), r1: mkRoute("r1", "p1", "p2", 2) };
+    t.events_v2.p1.seq = 1; t.events_v2.p2.seq = 3;
+    t.events_v2.p1.time_window!.source = "llm_inference"; // 验证 editEvent 会把来源改写成 user
+    const st = new TripStore(t, tmp2);
+    // editEvent：改时间 → source=user 不自动钉；倒挂 → TIME_INVERSION 即时检出
+    const cf1 = editEvent(st, "p1", { time_window: { start: "18:00", end: "10:00" } });
+    ok(st.trip.events_v2!.p1.time_window?.source === "user" && !st.trip.events_v2!.p1.time_window?.pinned, "editEvent：改时间置 user 软值、不自动钉");
+    ok(cf1.some(c => c.code === "TIME_INVERSION" && c.ids.includes("p1")), "editEvent：时间倒挂即时检出", JSON.stringify(cf1));
+    st.undo(); st.undo(); // log（undo=null）+ snapshot 两条
+    ok(st.trip.events_v2!.p1.time_window?.start === "09:00", "undo 恢复编辑前时间");
+    // reorderEvents：p2 排到最前 → seq 重排 + r1 标 stale
+    reorderEvents(st, 1, ["p2", "r1", "p1"]);
+    ok(st.trip.events_v2!.p2.seq === 1 && st.trip.events_v2!.p1.seq === 3, "reorder：seq 重排");
+    ok((st.trip.events_v2!.r1.detail as RouteDetail).stale === true, "reorder：受影响 route 标 stale");
+    // insertPoiOnRoute：r1 分裂两段 + draft POI（user 来源）
+    const { poiId } = insertPoiOnRoute(st, "r1", "中途点");
+    const r2 = Object.values(st.trip.events_v2!).find(e => e.kind === "route" && e.event_id !== "r1")!;
+    ok((st.trip.events_v2!.r1.detail as RouteDetail).to_ref === poiId && (r2.detail as RouteDetail).from_ref === poiId, "insert：route 分裂为 A→P、P→B 两段");
+    ok(st.trip.events_v2![poiId].status === "draft" && st.trip.events_v2![poiId].provenance === "user", "insert：draft POI 为 user 来源");
+    ok((st.trip.events_v2!.r1.detail as RouteDetail).stale === true && (r2.detail as RouteDetail).stale === true, "insert：两段都 stale");
+    // pinEvent：无时间不能钉；有时间可钉可拔
+    let threw = false;
+    try { pinEvent(st, poiId, true); } catch { threw = true; }
+    ok(threw, "pin：无时间事件不能钉");
+    pinEvent(st, "p1", true);
+    ok(st.trip.events_v2!.p1.time_window?.pinned === true, "pin：钉住");
+    pinEvent(st, "p1", false);
+    ok(st.trip.events_v2!.p1.time_window?.pinned === false, "pin：拔钉");
+  } finally { rmSync(tmp2, { recursive: true, force: true }); }
+}
 
 console.log(`\n结果：${pass} 通过，${fail} 失败`);
 process.exit(fail ? 1 : 0);

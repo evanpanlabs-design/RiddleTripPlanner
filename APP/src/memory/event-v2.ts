@@ -11,9 +11,12 @@ export type Source = "api" | "user" | "llm_inference";
 export type Provenance = Source;
 
 export interface TimeWindow {
-  start?: string | null;   // "HH:MM"，不存绝对时间戳（SPEC §4.1）
-  end?: string | null;
-  source: Source | "blank"; // blank = 留空待共创（v1 迁移兼容）
+start?: string | null;   // "HH:MM"，不存绝对时间戳（SPEC §4.1）
+end?: string | null;
+source: Source | "blank"; // blank = 留空待共创（v1 迁移兼容）
+/** 0.5 三层时间模型：true = 钉住层（用户锚点，LOOP 免碰只能用户拔钉）；
+ * 未钉时 source=user 为用户软值（LOOP 可调但必须明说留痕），其余为派生层（顺序变即重算） */
+pinned?: boolean;
 }
 
 export interface Cost { amount: number; currency: string; source: Source }
@@ -70,6 +73,8 @@ export interface RouteDetail {
     line: string; depart?: string; arrive?: string; price?: number | null; disclaimer?: string;
   } | null;
   is_entry_exit?: boolean;      // true = AOI 的进出段
+  /** 0.5：端点顺序/交通方式被用户改过后置 true——里程/耗时/几何待下轮 LOOP 重算，D7 未清计入 fails */
+  stale?: boolean;
 }
 
 export interface AoiDetail {

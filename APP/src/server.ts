@@ -12,7 +12,11 @@
  *   POST /api/projects/reorder      { ids: [...] } → 按数组顺序写入 order
  *   GET  /api/state?project=   → { trip, pending, ops, conv }
  *   POST /api/input?project=   → { text } → 跑一轮 agent.prompt
-*   POST /api/turn/retry?project=     → 0.4.4 网关故障重试卡：带 lastFailedTurn 原输入重跑
+ *   POST /api/turn/retry?project=     → 0.4.4 网关故障重试卡：带 lastFailedTurn 原输入重跑
+ *   PATCH  /api/events/:id?project=        → 0.5 手动微调（时间/备注/交通方式）→ edit_event
+ *   POST   /api/events/reorder?project=    { day, ordered_ids } → 拖拽重排（只动 seq，route 标 stale）
+ *   POST   /api/events/insert-on-route?project= { route_id, name } → route 分裂 + draft POI
+ *   POST   /api/events/:id/pin?project=    { pinned } → 图钉钉住/拔钉
  *   POST /api/pending/decide?project= → { id, approve } → 卡片结构化决定：消费 pending + 恢复/放弃挂起操作（0.4.2）
  *   POST /api/reset?project=   → 该项目的 trip 推倒重来
  *   GET  /api/events?project=  → SSE：jev/pending/geo/gate/tool/turn_* 事件流（按项目隔离）
@@ -26,6 +30,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { createRiddleAgent, buildModel, type RiddleRuntime } from "./agent.ts";
 import { TripStore, emptyTrip, destList, recordUserAction } from "./memory/trip-store.ts";
+import { editEvent, reorderEvents, insertPoiOnRoute, pinEvent, checkTimeConflicts } from "./memory/edits.ts";
 import { LLM_PRESETS, loadSettings, saveSettings, publicSettings, resolveMapConfig, resolveWatchdogMs, type LlmProvider } from "./settings.ts";
 import { testConnection } from "./settings-test.ts";
 
@@ -208,6 +213,8 @@ function statePayload(p: Project) {
     ops: rt.store.ops.map((r: any) => ({ seq: r.seq, ts: r.ts, op: r.op, undo_kind: r.undo?.kind ?? null, payload: r.payload })),
     conv: p.conv,
     failedTurn: p.lastFailedTurn ?? null,
+    // 0.5：即时机械冲突（时间倒挂/重叠）随状态下发，前台标红；允许暂存，D7 前必须清
+    conflicts: checkTimeConflicts(tripV2.events_v2 ?? {}),
   };
 }
 
@@ -437,6 +444,48 @@ const server = createServer(async (req, res) => {
     p.conv.push({ role: "user", text: `↻ 重试上一轮 —— ${failed.text}`, ts: Date.now() });
     persistConv(p);
     return runTurn(p, failed.text, res);
+  }
+  // ---------- 0.5 共创编辑器：同步编辑 API（落 op 不触发 LLM 轮；busy 时拒绝防并发改图） ----------
+  const evMatch = /^\/api\/events\/([^/]+)(\/pin)?$/.exec(path);
+  if (evMatch && (req.method === "PATCH" || (evMatch[2] && req.method === "POST"))) {
+    const p = resolveProject(url);
+    if (!p) return sendJson(res, 404, { error: "project not found" });
+    if (p.busy) return sendJson(res, 409, { error: "agent busy，等这轮跑完再改" });
+    const rt = getRt(p);
+    const body = await readBody(req);
+    try {
+      if (evMatch[2]) pinEvent(rt.store, evMatch[1], !!body.pinned);
+      else editEvent(rt.store, evMatch[1], body.patch ?? {});
+    } catch (e) { return sendJson(res, 400, { error: (e as Error).message }); }
+    touch(p);
+    broadcast(p, { type: "state_dirty" });
+    return sendJson(res, 200, statePayload(p));
+  }
+  if (path === "/api/events/reorder" && req.method === "POST") {
+    const p = resolveProject(url);
+    if (!p) return sendJson(res, 404, { error: "project not found" });
+    if (p.busy) return sendJson(res, 409, { error: "agent busy，等这轮跑完再改" });
+    const body = await readBody(req);
+    const rt = getRt(p);
+    try { reorderEvents(rt.store, Number(body.day), Array.isArray(body.ordered_ids) ? body.ordered_ids.map(String) : []); }
+    catch (e) { return sendJson(res, 400, { error: (e as Error).message }); }
+    touch(p);
+    broadcast(p, { type: "state_dirty" });
+    return sendJson(res, 200, statePayload(p));
+  }
+  if (path === "/api/events/insert-on-route" && req.method === "POST") {
+    const p = resolveProject(url);
+    if (!p) return sendJson(res, 404, { error: "project not found" });
+    if (p.busy) return sendJson(res, 409, { error: "agent busy，等这轮跑完再改" });
+    const body = await readBody(req);
+    const rt = getRt(p);
+    const name = String(body.name ?? "").trim();
+    if (!name) return sendJson(res, 400, { error: "empty name" });
+    try { insertPoiOnRoute(rt.store, String(body.route_id ?? ""), name); }
+    catch (e) { return sendJson(res, 400, { error: (e as Error).message }); }
+    touch(p);
+    broadcast(p, { type: "state_dirty" });
+    return sendJson(res, 200, statePayload(p));
   }
   // 0.4.2 卡片真阻塞 HITL：结构化决定（聊天卡片/待确认面板按钮）→ 直接消费 pending（不经 Jev 意图判断），
   // 同意则颁发一次性放行令牌并驱动 agent 恢复被挂起的操作；拒绝则放弃。自然语言回答是兜底路径（transformContext）。
