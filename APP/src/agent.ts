@@ -15,6 +15,7 @@ import { ResilientJudge } from "./jev/resilient-judge.ts";
 import { TH, d4ChecklistMatchQuestions } from "./jev/questions.ts";
 import { TripStore, tripSummary, planDesc, gateReport, destList, type Trip } from "./memory/trip-store.ts";
 import { assembleDraft, checkChainCompleteness, checkPlanQuality, isAoi, isPoi, isRoute, childrenOf, type DraftV2, type EventV2, type RouteEvent, type AoiEvent, type PoiEvent } from "./memory/event-v2.ts";
+import { mergeTimeSovereignty, checkTimeConflicts } from "./memory/edits.ts";
 import { enrichFromBaidu } from "./tools/baidu-place.ts";
 import { fetchAoiBoundary, convexHull } from "./tools/osm-aoi.ts";
 import { Scheduler, type PendingQuestion } from "./scheduler/scheduler.ts";
@@ -25,12 +26,17 @@ import { resolveLlm } from "./settings.ts";
 const SYSTEM = `你是 Riddle，一个旅行规划 Copilot（像一本会回应的日记本）。
 用户可以随时倒入任何旅行素材与需求。你的工作方式：
 - 用工具改变世界，用话语回应用户。所有状态变更必须通过工具，不要只在文字里"声称"改了什么。
-- 用户陈述任何旅行约束（目的地/日期/天数/出发地/同行人/节奏/兴趣/住宿偏好）时，先调 update_slot 逐条记录（系统会复核，文本明确支持才会生效），然后再回应。
+- 用户陈述任何旅行约束（目的地/日期/天数/出发地/同行人/节奏/兴趣/住宿偏好/出行方式）时，先调 update_slot 逐条记录（系统会复核，文本明确支持才会生效），然后再回应。出行方式记 mobility 槽位：自驾=self_drive，公共交通/未提=general（默认）。自驾时同城 route 的 detail.mode 应优先驾车；跨城段（火车/飞机/大巴）不受此限。
 - 用户汇报准备事项完成时，调 confirm_progress 勾选清单项：items 传 item_id（get_trip_state 可查清单），Jev 会逐项与用户原话复核，只勾被明确提及的项；用户确认方案整体时传 lock_events: true 锁定全部 Event。
 - 你能推断的时间/安排就推断，推断不了的如实留空请用户补充，绝不编造精确事实（班次/票价/营业时间）。
 - 跨城火车/飞机/大巴有真实数据源：用 get_route 的 transit 模式查询（返回真实车次/航班号、时刻、票价，为查询当日班次，会随出发日期变化——方案中应表述为"代表性班次"，出行前需复核）。
 - 判断由系统中的 Jev 引擎做出：你每次说话前会看到它对你上一输入的意图概率分析和当前阶段，请尊重这些判断。
 - 方案结构（v2 事件树）：事件分三类——poi（点：游览/住宿/场站）、route（线：通勤段，用 detail.from/to 引用两端事件的 tmp_id）、aoi（面：景区，可用 parent_id 嵌套子事件）。同一天内相邻两个活动之间必须有一个 route 事件连接，漏了会被结构校验（V8）直接打回。每天以住宿或场站收尾。
+- 三层时间模型（用户对事件时间的主权，apply_plan 重建树时系统会自动执行，你要在话语上配合）：
+  · 钉住层（time_window.pinned=true）：用户钉死的锚点，绝对免碰——排方案时当固定点绕开；锚点间排不下时不得自揑改，向用户说明冲突、请求拔钉或调整。
+  · 用户软值（time_window.source=user 但未钉）：用户手动改的时间。你可以调整，但必须回复里明说哪条、从什么时间改成什么、为什么。
+  · 派生层（其余）：你推断的时间，顺序或安排变了就大胆重算。
+  · route 的 detail.stale=true 表示端点顺序/交通方式刚被用户改过，重排方案时优先重算这些通勤段（重新 apply_plan 即自动刷新）。
 - 生成方案前先确认天数与目的地已记录（get_trip_state 可查），然后调 apply_plan 提交完整方案（扁平事件列表，tmp_id + parent_id + seq 表达嵌套）。
 - 如果系统告诉你有待确认问题（pending），先处理它。`;
 
@@ -169,7 +175,7 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
   const updateSlot: AgentTool = {
     name: "update_slot",
     label: "更新槽位",
-    description: "更新旅行约束槽位（destination/date_range/days/origin/party/pace/interests/stay_pref）。Jev 会复核后生效。",
+    description: "更新旅行约束槽位（destination/date_range/days/origin/party/pace/interests/stay_pref/mobility）。mobility 取值 self_drive（自驾）或 general（公共交通，默认）。Jev 会复核后生效。",
     parameters: Type.Object({
       slot: Type.String(),
       value: Type.Unknown(),
@@ -248,11 +254,20 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
       if (v8.length) fails.push("V8_chain_integrity");
       // Q1–Q3 方案质量判断进 D7（0.4.3）：机械校验，吃 0.4.1 抓回的 detail 字段（geo/opening_detail/耗时）。
       // Q3 营业时段冲突=硬校验（进 fails 打回）；Q1 动线折返/Q2 强度均匀=建议级，只压 probs 随回复提示。
-      const quality = checkPlanQuality(store.trip.events_v2 ?? {}, { startDate: startDateOf(store.trip), days: store.trip.days });
+      const quality = checkPlanQuality(store.trip.events_v2 ?? {}, { startDate: startDateOf(store.trip), days: store.trip.days, mobility: typeof store.trip.slots?.mobility === "string" ? store.trip.slots.mobility : null });
       probs.Q1_route_backtrack = quality.advisories.some(q => q.code === "Q1_BACKTRACK") ? 0 : 1;
       probs.Q2_intensity_balance = quality.advisories.some(q => q.code === "Q2_INTENSITY") ? 0 : 1;
       probs.Q3_opening_conflict = quality.hard.length ? 0 : 1;
+      probs.Q4_mobility_consistency = quality.advisories.some(q => q.code === "Q4_MOBILITY") ? 0 : 1;
       if (quality.hard.length) fails.push("Q3_opening_conflict");
+      // 0.5 e8：编辑态机械校验进 D7（硬）——钉住事件被草案重排卷入时间冲突；route stale 未清
+      const treeNow = store.trip.events_v2 ?? {};
+      const pinnedCf = checkTimeConflicts(treeNow).filter(c => c.ids.some(id => treeNow[id]?.time_window?.pinned));
+      probs.E1_pinned_conflict = pinnedCf.length ? 0 : 1;
+      if (pinnedCf.length) fails.push("E1_pinned_conflict");
+      const staleRoutes = Object.values(treeNow).filter(e => isRoute(e) && e.detail.stale);
+      probs.E2_route_stale = staleRoutes.length ? 0 : 1;
+      if (staleRoutes.length) fails.push("E2_route_stale");
       emit({ type: "jev", sub: "校验", fails, probs, advisories: quality.advisories.map(a => a.message), pass: !fails.length });
       store.trip.stage = gateReport(store.trip).stage;
       store.save();
@@ -261,7 +276,10 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
         const probStr = fails.map(f => `${f}=${(probs[f] ?? 0).toFixed(2)}`).join(", ");
         const v8Str = v8.length ? `。链条缺失：${v8.map(e => e.message).join("；")}` : "";
         const q3Str = quality.hard.length ? `。营业时段冲突：${quality.hard.map(q => q.message).join("；")}` : "";
-        return { content: [{ type: "text", text: `校验未通过（${fails.join(", ")}），请修复后重新提交完整草案。概率：${probStr}${v8Str}${q3Str}` }], details: { verify, v8, quality } };
+        // 0.5 e8：钉住冲突/stale 的修复指引随打回文本给出
+        const e1Str = pinnedCf.length ? `。钉住冲突（这些事件被用户钉死，绝不能改它们的时间，只能绕开重排其它事件或请求用户拔钉）：${pinnedCf.map(c => c.message).join("；")}` : "";
+        const e2Str = staleRoutes.length ? `。${staleRoutes.length} 条通勤段处于 stale（端点/方式被用户改过），本次草案必须重算这些段` : "";
+        return { content: [{ type: "text", text: `校验未通过（${fails.join(", ")}），请修复后重新提交完整草案。概率：${probStr}${v8Str}${q3Str}${e1Str}${e2Str}` }], details: { verify, v8, quality, pinned_conflicts: pinnedCf, stale_routes: staleRoutes.map(r => r.event_id) } };
       }
       // 落图校验通过：整树 draft → active（SPEC §3.1 status 语义）
       for (const ev of Object.values(store.trip.events_v2 ?? {})) if (ev.status === "draft") ev.status = "active";
@@ -273,7 +291,9 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
         : "";
       const aoiNote = aoiAsync ? `。${aoiAsync} 个景区的边界正在后台获取（OSM），成功后会自动热替换包络` : "";
       const qualityNote = quality.advisories.length ? `。质量提示（建议级，未阻塞）：${quality.advisories.map(q => q.message).join("；")}——可在后续与用户共创时优化` : "";
-      return { content: [{ type: "text", text: `方案已落图并通过校验：${Object.keys(store.trip.events_v2 ?? {}).length} 个事件（含嵌套），${Object.keys(store.trip.checklist).length} 项清单。当前阶段 ${store.trip.stage}${aoiNote}${gapNote}${warnNote}${qualityNote}` }], details: { verify, route_gaps: gaps, warnings, quality } };
+      // 0.5：用户软值被重排必须明说（三层时间模型）
+      const softNote = applied.softOverrides.length ? `。重要：以下用户手动调整过的时间被本次重排改动，你必须在回复中逐条向用户说明理由——${applied.softOverrides.join("；")}` : "";
+      return { content: [{ type: "text", text: `方案已落图并通过校验：${Object.keys(store.trip.events_v2 ?? {}).length} 个事件（含嵌套），${Object.keys(store.trip.checklist).length} 项清单。当前阶段 ${store.trip.stage}${aoiNote}${gapNote}${warnNote}${qualityNote}${softNote}` }], details: { verify, route_gaps: gaps, warnings, quality, soft_overrides: applied.softOverrides } };
     },
   };
 
@@ -556,7 +576,7 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
  *      → route 数据补全（高德市内 / 百度跨城班次）→ AOI 包络上线 + OSM 边界后台获取。
  * dryRun=true 时只做结构校验（apply_plan execute 的前置打回检查），不落地、不发起任何 IO。 */
 type ApplyV2Result =
-  | { ok: true; warnings: string[]; gaps: { from: string; to: string; mode: string; reason: string }[]; aoiAsync: number }
+  | { ok: true; warnings: string[]; gaps: { from: string; to: string; mode: string; reason: string }[]; aoiAsync: number; softOverrides: string[] }
   | { ok: false; errors: { code: string; message: string }[] };
 
 async function applyDraftV2(store: TripStore, draft: DraftV2, emit?: (ev: RiddleEvent) => void, dryRun = false): Promise<ApplyV2Result> {
@@ -564,10 +584,13 @@ async function applyDraftV2(store: TripStore, draft: DraftV2, emit?: (ev: Riddle
   if (!asm.ok) return { ok: false, errors: asm.errors };
   const v8 = checkChainCompleteness(asm.events);
   if (v8.length) return { ok: false, errors: v8 };
-  if (dryRun) return { ok: true, warnings: asm.warnings, gaps: [], aoiAsync: 0 };
+  if (dryRun) return { ok: true, warnings: asm.warnings, gaps: [], aoiAsync: 0, softOverrides: [] };
 
   const trip = store.trip;
   const events = asm.events;
+
+  // 0.5 三层时间模型合并（SPEC/editor-schema-0.5.md §1；实现抽在 edits.ts 便于纯函数测试）
+  const softOverrides = mergeTimeSovereignty(trip.events_v2 ?? {}, events);
   const cityHint = destList(trip)[0];
 
   // 1. poi/aoi 地理解析 + 百度富化（SPEC §10：place detail 接入）
@@ -609,6 +632,11 @@ async function applyDraftV2(store: TripStore, draft: DraftV2, emit?: (ev: Riddle
 
   // 2. route 数据补全（高德市内真实路径 / 百度跨城真实班次）
   const routes = Object.values(events).filter(isRoute);
+  // 0.5 e6 mobility 槽位：自驾时草案缺省 mode 的同城段默认驾车（跨城段 LLM 已给方式，不覆盖）
+  const mobility = typeof trip.slots?.mobility === "string" ? trip.slots.mobility : null;
+  if (mobility === "self_drive") {
+    for (const r of routes) if (!r.detail.mode) r.detail.mode = "驾车";
+  }
   for (const r of routes) await resolveRouteDataV2(r, events);
 
   // 3. 通勤路径完备性收尾 + 缺口收集
@@ -677,7 +705,8 @@ async function applyDraftV2(store: TripStore, draft: DraftV2, emit?: (ev: Riddle
   trip.events_v2 = events;
   trip.checklist = checklist;
   if (!trip.days) trip.days = draft.days || 0;
-  return { ok: true, warnings: asm.warnings, gaps, aoiAsync };
+  if (softOverrides.length) store.log("soft_time_override", { overrides: softOverrides }, null, { actor: "loop" }); // 软值调整留痕（0.5）
+  return { ok: true, warnings: asm.warnings, gaps, aoiAsync, softOverrides };
 }
 
 /** 单条 route 事件的数据源解析（原地修改）。策略与 v1 resolveEdgeData 一致：

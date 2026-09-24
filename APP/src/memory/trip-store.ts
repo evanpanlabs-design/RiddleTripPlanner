@@ -35,7 +35,7 @@ const nid = (p: string) => `${p}_${randomUUID().slice(0, 8)}`;
 export function emptyTrip(): Trip {
   return {
     trip_id: nid("trip"), stage: "explore", days: 0, destination: [],
-    slots: { destination: [], date_range: null, origin: null, budget_band: null, party: null, pace: null, interests: [], stay_pref: null },
+    slots: { destination: [], date_range: null, origin: null, budget_band: null, party: null, pace: null, interests: [], stay_pref: null, mobility: null },
     checklist: {}, candidate_pool: {},
     events_v2: {},
     user_actions: [],

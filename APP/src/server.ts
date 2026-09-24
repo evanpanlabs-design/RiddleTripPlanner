@@ -29,7 +29,7 @@ config({ path: join(import.meta.dirname, "../../.env") });
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { createRiddleAgent, buildModel, type RiddleRuntime } from "./agent.ts";
-import { TripStore, emptyTrip, destList, recordUserAction } from "./memory/trip-store.ts";
+import { TripStore, emptyTrip, destList, recordUserAction, type Trip } from "./memory/trip-store.ts";
 import { editEvent, reorderEvents, insertPoiOnRoute, pinEvent, checkTimeConflicts } from "./memory/edits.ts";
 import { LLM_PRESETS, loadSettings, saveSettings, publicSettings, resolveMapConfig, resolveWatchdogMs, type LlmProvider } from "./settings.ts";
 import { testConnection } from "./settings-test.ts";
@@ -483,6 +483,36 @@ const server = createServer(async (req, res) => {
     if (!name) return sendJson(res, 400, { error: "empty name" });
     try { insertPoiOnRoute(rt.store, String(body.route_id ?? ""), name); }
     catch (e) { return sendJson(res, 400, { error: (e as Error).message }); }
+    touch(p);
+    broadcast(p, { type: "state_dirty" });
+    return sendJson(res, 200, statePayload(p));
+  }
+  // 0.5 e6：出行方式槽位直改（UI 模式 chip 用）。白名单仅 mobility——其余槽位必须走对话 + Jev 复核
+  if (path === "/api/slots/mobility" && req.method === "POST") {
+    const p = resolveProject(url);
+    if (!p) return sendJson(res, 404, { error: "project not found" });
+    if (p.busy) return sendJson(res, 409, { error: "agent busy，等这轮跑完再改" });
+    const body = await readBody(req);
+    const v = String(body.value ?? "");
+    if (!["general", "self_drive"].includes(v)) return sendJson(res, 400, { error: "value 须为 general | self_drive" });
+    const rt = getRt(p);
+    const old = JSON.parse(JSON.stringify(rt.store.trip.slots));
+    rt.store.trip.slots.mobility = v;
+    rt.store.log("slot_update", { slot: "mobility", value: v }, { kind: "restore_slots", slots: old }, { actor: "user" });
+    touch(p);
+    broadcast(p, { type: "state_dirty" });
+    return sendJson(res, 200, statePayload(p));
+  }
+  // dev-only：整树恢复（数据抢救/调试用；不落 op、不触发 LLM 轮，直接替换事实源并落盘）
+  if (path === "/api/dev/restore-trip" && req.method === "POST") {
+    const p = resolveProject(url);
+    if (!p) return sendJson(res, 404, { error: "project not found" });
+    if (p.busy) return sendJson(res, 409, { error: "agent busy" });
+    const body = await readBody(req);
+    if (!body.trip || typeof body.trip !== "object") return sendJson(res, 400, { error: "trip required" });
+    const rt = getRt(p);
+    rt.store.trip = body.trip as Trip;
+    rt.store.save();
     touch(p);
     broadcast(p, { type: "state_dirty" });
     return sendJson(res, 200, statePayload(p));

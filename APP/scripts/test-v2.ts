@@ -6,7 +6,7 @@ import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { assembleDraft, checkChainCompleteness, checkPlanQuality, walkTree, type DraftV2, type EventV2, type RouteDetail, type PoiDetail, type OpeningDetail } from "../src/memory/event-v2.ts";
 import { migrateTripV1toV2 } from "../src/memory/migrate-v2.ts";
-import { editEvent, reorderEvents, insertPoiOnRoute, pinEvent } from "../src/memory/edits.ts";
+import { editEvent, reorderEvents, insertPoiOnRoute, pinEvent, checkTimeConflicts, mergeTimeSovereignty } from "../src/memory/edits.ts";
 import { TripStore, emptyTrip, type Trip } from "../src/memory/trip-store.ts";
 import { convexHull, douglasPeucker, wgs84ToGcj02 } from "../src/tools/osm-aoi.ts";
 
@@ -245,6 +245,59 @@ const mkRoute = (id: string, from: string, to: string, seq: number): EventV2 => 
     pinEvent(st, "p1", false);
     ok(st.trip.events_v2!.p1.time_window?.pinned === false, "pin：拔钉");
   } finally { rmSync(tmp2, { recursive: true, force: true }); }
+}
+// checkTimeConflicts 按日分桶：不同日的同名时段不算重叠（修复跨天误报）
+{
+  const evs: Record<string, EventV2> = {
+    a1: mkPoi("a1", "D1上午", 1, "09:00"),
+    a2: mkPoi("a2", "D1下午", 1, "14:00"),
+    b1: mkPoi("b1", "D2上午", 2, "09:30"),
+  };
+  evs.a1.time_window!.end = "12:00"; evs.a2.time_window!.end = "16:00"; evs.b1.time_window!.end = "23:00";
+  ok(checkTimeConflicts(evs).length === 0, "冲突校验：跨天同时间段不误报", JSON.stringify(checkTimeConflicts(evs)));
+  evs.b1.day_refs = [1]; // b1 挪到 D1 → 09:30 落在 a1(09:00-12:00) 内 → 重叠
+  ok(checkTimeConflicts(evs).some(c => c.code === "TIME_OVERLAP" && c.ids.includes("a1") && c.ids.includes("b1")), "冲突校验：同日重叠检出");
+}
+// mergeTimeSovereignty（e4）：钉住层免碰 / 用户软值被改留痕 / 派生层不干预
+{
+  const prev: Record<string, EventV2> = {
+    pin1: mkPoi("pin1", "钉住的点", 1, "09:00"),
+    soft1: mkPoi("soft1", "手动改的点", 1, "10:00"),
+    der1: mkPoi("der1", "派生的点", 1, "11:00"),
+  };
+  prev.pin1.time_window!.pinned = true;
+  prev.soft1.time_window!.source = "user";
+  prev.der1.time_window!.source = "llm_inference";
+  const next: Record<string, EventV2> = {
+    n1: mkPoi("n1", "钉住的点", 1, "14:00"),   // LOOP 重排到了 14:00
+    n2: mkPoi("n2", "手动改的点", 1, "15:00"), // LOOP 也动了软值
+    n3: mkPoi("n3", "派生的点", 1, "16:00"),   // 派生层随便动
+    n4: mkPoi("n4", "新加的点", 1, "17:00"),
+  };
+  next.n1.time_window!.source = "llm_inference"; next.n2.time_window!.source = "llm_inference"; next.n3.time_window!.source = "llm_inference";
+  const ov = mergeTimeSovereignty(prev, next);
+  ok(next.n1.time_window?.start === "09:00" && next.n1.time_window?.pinned === true, "合并：钉住层免碰（旧时间+钉原样盖回）");
+  ok(next.n2.time_window?.start === "15:00" && ov.length === 1 && ov[0].includes("手动改的点"), "合并：软值被改 → 草案生效但留明说清单", JSON.stringify(ov));
+  ok(next.n3.time_window?.start === "16:00", "合并：派生层不干预");
+  ok(next.n4.time_window?.start === "17:00", "合并：新增事件不受影响");
+  // 软值未被改 → 无明说清单
+  const prev2: Record<string, EventV2> = { s: mkPoi("s", "软值点", 1, "10:00") };
+  const next2: Record<string, EventV2> = { s2: mkPoi("s2", "软值点", 1, "10:00") };
+  ok(mergeTimeSovereignty(prev2, next2).length === 0, "合并：软值未被改动不留痕");
+}
+// Q4 出行方式一致性（e6）：self_drive 时同城公交/地铁段 → 建议级；跨城段不查
+{
+  const evs: Record<string, EventV2> = {
+    p1: mkPoi("p1", "甲", 1, "09:00"), p2: mkPoi("p2", "乙", 1, "11:00"),
+    r1: mkRoute("r1", "p1", "p2", 2),
+    r2: mkRoute("r2", "p1", "p2", 3),
+  };
+  (evs.r1.detail as RouteDetail).mode = "公交";
+  (evs.r2.detail as RouteDetail).mode = "火车";
+  const q = checkPlanQuality(evs, { days: 1, mobility: "self_drive" });
+  ok(q.advisories.filter(a => a.code === "Q4_MOBILITY").length === 1 && q.advisories[0].message.includes("公交"), "Q4：自驾槽位下公交段建议级提示", JSON.stringify(q.advisories));
+  ok(q.hard.length === 0, "Q4：只是建议级不进硬校验");
+  ok(checkPlanQuality(evs, { days: 1, mobility: "general" }).advisories.every(a => a.code !== "Q4_MOBILITY"), "Q4：general 不查");
 }
 
 console.log(`\n结果：${pass} 通过，${fail} 失败`);

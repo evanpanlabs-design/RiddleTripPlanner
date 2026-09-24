@@ -366,7 +366,7 @@ export function checkChainCompleteness(events: Record<string, EventV2>): Assembl
 /** 机械质量校验：吃 0.4.1 抓回的 detail 字段（geo/opening_detail/route 耗时）。
  * 与 V 族结构校验的区别：V 族判"结构对不对"，Q 族判"方案好不好"。
  * llm_inference 来源的字段按 SPEC §5 不作为校验依据。 */
-export interface QualityProblem { code: "Q1_BACKTRACK" | "Q2_INTENSITY" | "Q3_OPENING_CONFLICT"; message: string; ids: string[] }
+export interface QualityProblem { code: "Q1_BACKTRACK" | "Q2_INTENSITY" | "Q3_OPENING_CONFLICT" | "Q4_MOBILITY"; message: string; ids: string[] }
 export interface PlanQuality { hard: QualityProblem[]; advisories: QualityProblem[] }
 
 /** haversine 距离（米）。memory 层保持零依赖，不引 tools/amap */
@@ -402,7 +402,7 @@ const fmtKm = (m: number) => (m / 1000).toFixed(0);
 
 export function checkPlanQuality(
   events: Record<string, EventV2>,
-  opts: { startDate?: string | null; days?: number } = {},
+  opts: { startDate?: string | null; days?: number; mobility?: string | null } = {},
 ): PlanQuality {
   const hard: QualityProblem[] = [];
   const advisories: QualityProblem[] = [];
@@ -481,6 +481,20 @@ export function checkPlanQuality(
           code: "Q3_OPENING_CONFLICT",
           message: `Day${day}「${e.name}」计划 ${e.time_window?.start} 到达，但周${wdLabel}不在其开放时段内（${od.text || `${od.periods.length} 个开放时段`}）——请调整该日的到访时间或改期`,
           ids: [e.event_id],
+        });
+      }
+    }
+  }
+  // ---- Q4 出行方式一致性（建议级，0.5 e6）：mobility=self_drive 时同城段不应是公交/地铁 ----
+  if (opts.mobility === "self_drive") {
+    const LOCAL_TRANSIT = new Set(["公交", "地铁"]);
+    for (const r of live.filter(isRoute)) {
+      // 跨城段（火车/飞机/大巴）不受自驾约束；只查同城公共交通段
+      if (LOCAL_TRANSIT.has(r.detail.mode)) {
+        advisories.push({
+          code: "Q4_MOBILITY",
+          message: `「${r.name}」是${r.detail.mode}段，但出行方式槽位是自驾——建议改为驾车或向用户确认该段不开车`,
+          ids: [r.event_id],
         });
       }
     }
