@@ -140,6 +140,11 @@
   .nb-input .send{font-family:var(--sans);font-size:12.5px;font-weight:500;color:#FFF;background:var(--btn);border:1px solid var(--btn);border-radius:6px;padding:8px 14px;white-space:nowrap}
   .nb-input .send:disabled{opacity:.4;cursor:default}
   .nb-hint{font-size:11px;color:var(--ink3);margin-top:7px;font-family:var(--mono)}
+  /* 0.5 e6 出行方式 chip（输入框右下） */
+  .nb-hint{position:relative}
+  .mob-chip{position:absolute;right:0;top:0;cursor:pointer;padding:1px 8px;border-radius:99px;border:1px solid var(--line);background:var(--paper);user-select:none;transition:all .15s}
+  .mob-chip:hover{border-color:var(--ink3)}
+  .mob-chip.on{background:#EEF6EE;border-color:#9CBB9C;color:#3E6B3E}
 
   /* ============ 中栏 · 时间线 ============ */
   .timeline{width:64px;min-width:64px;border-right:1px solid var(--hair);background:var(--panel);display:flex;flex-direction:column;transition:width .28s cubic-bezier(.4,0,.2,1);overflow:hidden}
@@ -166,6 +171,29 @@
   @keyframes tlFlash{0%{background:var(--accent-soft)}100%{background:transparent}}
   .day-chip{cursor:pointer}
   .day-chip:hover{border-color:var(--ink3);color:var(--ink)}
+  /* 0.5 共创编辑器：hover 操作钮 / 图钉 / 冲突标红 / 拖拽插入位 */
+  .tl-ev{position:relative}
+  .tl-ev .acts{position:absolute;right:6px;top:50%;transform:translateY(-50%);display:none;gap:4px}
+  .tl-ev:hover .acts{display:flex}
+  .tl-ev .acts button{border:1px solid var(--hair);background:#FFF;border-radius:5px;font-size:11px;padding:1px 6px;cursor:pointer;color:var(--ink2);line-height:1.5}
+  .tl-ev .acts button:hover{color:var(--ink);border-color:var(--ink3)}
+  .tl-ev .acts button.pin-on{color:var(--accent);border-color:var(--accent)}
+  .pin-mark{font-size:10px;margin-right:3px}
+  .tl-ev.conflict{border-color:var(--accent)!important;background:var(--accent-soft)!important}
+  .tl-ev.conflict .t{color:var(--accent)}
+  .tl-aoi.conflict{border-color:var(--accent)}
+  .tl-ev.drag-top,.tl-aoi.drag-top{box-shadow:inset 0 2px 0 var(--ink)}
+  .tl-ev.drag-bottom,.tl-aoi.drag-bottom{box-shadow:inset 0 -2px 0 var(--ink)}
+  .tl-ev[draggable=true],.tl-aoi[draggable=true]{cursor:grab}
+  /* 0.5 编辑弹层 */
+  #evEdit{position:fixed;z-index:60;width:290px;background:#FFF;border:1px solid var(--hair);border-radius:10px;box-shadow:0 10px 30px rgba(15,15,15,.16);padding:12px 14px;display:none}
+  #evEdit h4{font-size:12.5px;margin:0 0 10px;font-weight:600}
+  #evEdit .er{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12px;color:var(--ink2)}
+  #evEdit .er label{width:56px;flex:none}
+  #evEdit input,#evEdit select{flex:1;border:1px solid var(--hair);border-radius:6px;padding:5px 8px;font-size:12px;font-family:var(--sans);outline:none;min-width:0}
+  #evEdit input:focus,#evEdit select:focus{border-color:var(--ink3)}
+  #evEdit .ea{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}
+  #evEdit .emsg{font-size:11px;color:var(--accent);margin-right:auto;align-self:center}
   .tl-days{flex:1;overflow-y:auto;padding:6px 22px 24px}
   .tl-day{padding:14px 0;border-bottom:1px solid var(--hair2)}
   .tl-day-head{display:flex;align-items:baseline;gap:10px;margin-bottom:8px}
@@ -408,7 +436,7 @@
         <textarea id="nbText" placeholder="继续往本子里写……（需求 / 素材 / 汇报都行，Enter 发送）" aria-label="输入旅行需求或素材"></textarea>
         <button class="send" id="nbSend" type="submit">发送 ↵</button>
       </form>
-      <div class="nb-hint"><span class="scales">⚖</span>意图分类 · <span class="scales">⚖</span>槽位复核 · 每次输入先过 Jev（live）</div>
+      <div class="nb-hint"><span class="scales">⚖</span>意图分类 · <span class="scales">⚖</span>槽位复核 · 每次输入先过 Jev（live）<span class="mob-chip" id="mobChip" title="出行方式槽位：影响同城通勤默认方式">🚇 公共交通</span></div>
     </div>
   </section>
 
@@ -427,6 +455,9 @@
       <div class="tl-days scroll-thin" id="tlDays"></div>
     </div>
   </section>
+
+  <!-- 0.5 事件编辑弹层（时间/备注/交通方式） -->
+  <div id="evEdit" role="dialog" aria-label="编辑事件"></div>
 
   <!-- ================= 右区 ================= -->
   <section class="right">
@@ -593,7 +624,7 @@ async function fetchState(){
 }
 function renderAll(){
   if(!S) return;
-  renderHeader(); renderRail(); renderTimeline(); renderPool(); renderPending(); syncOps(); renderStatus(); renderMap(); renderConv();
+  renderHeader(); renderRail(); renderTimeline(); renderPool(); renderPending(); syncOps(); renderStatus(); renderMap(); renderConv(); renderMobChip();
 }
 
 /* 对话历史：服务端权威（刷新不丢）；发送中的乐观条目以 .temp 标记，响应到达后由权威历史替换 */
@@ -673,8 +704,9 @@ function v2Geo(e){
   return null;
 }
 function dayEvents(d){
-  return v2Live().filter(e=>!e.parent_id && e.day_refs?.includes(d))
-    .sort((a,b)=>(a.time_window?.start??'99').localeCompare(b.time_window?.start??'99') || a.seq-b.seq);
+// 0.5：seq 是事件树的唯一顺序事实源（拖拽只改 seq 不改时间）；时间只是属性，不作为排序依据
+return v2Live().filter(e=>!e.parent_id && e.day_refs?.includes(d))
+.sort((a,b)=>a.seq-b.seq || (a.time_window?.start??'99').localeCompare(b.time_window?.start??'99'));
 }
 function evText(e){
   if(e.kind==='route'){
@@ -718,9 +750,16 @@ function renderTimeline(){
     if(tw?.start) return tw.start;
     return isLodging ? '晚' : '时间未定';
   };
+  // 0.5：冲突 id 集合（倒挂/重叠 → 标红）
+  const cfIds = new Set((S.conflicts||[]).flatMap(c=>c.ids||[]));
+  const cfMsg = id => (S.conflicts||[]).filter(c=>(c.ids||[]).includes(id)).map(c=>c.message).join('；');
+  /* 0.5 操作钮：poi/aoi = 编辑+图钉，route = 编辑+插入点位；拖拽仅顶层 */
+  const acts = e=>`<span class="acts">${e.kind==='route'?`<button data-act="ins" title="在这段通勤上插入点位">⊕</button>`:''}<button data-act="edit" title="编辑">✎</button>${e.kind!=='route'?`<button data-act="pin" class="${e.time_window?.pinned?'pin-on':''}" title="${e.time_window?.pinned?'拔钉（允许 LOOP 调整）':'钉住（LOOP 免碰）'}">${e.time_window?.pinned?'📌':'📍'}</button>`:''}</span>`;
   const row = (e, nested)=>{
     const cls = e.kind==='route' ? 'transit' : (e.kind==='poi' ? 'poi' : '');
-    return `<div class="tl-ev ${cls} ${nested?'tl-nested':''}" data-eid="${e.event_id}"><span class="t">${esc(timeLabel(e))}</span><span class="bar"></span><span class="body">${evText(e)}</span></div>`;
+    const pin = e.time_window?.pinned ? '<span class="pin-mark">📌</span>' : '';
+    const cf = cfIds.has(e.event_id);
+    return `<div class="tl-ev ${cls} ${nested?'tl-nested':''} ${cf?'conflict':''}" data-eid="${e.event_id}" ${nested?'':'draggable="true"'} ${cf?`title="${esc(cfMsg(e.event_id))}"`:''}><span class="t">${esc(timeLabel(e))}</span><span class="bar"></span><span class="body">${pin}${evText(e)}</span>${acts(e)}</div>`;
   };
   for(let d=1; d<=days; d++){
     const tops = dayEvents(d);
@@ -731,9 +770,11 @@ function renderTimeline(){
       if(e.kind==='aoi'){
         // AOI 一律带框（无子事件 = 只有头部的框，如黄龙）；子事件在框内也是卡（框中框）
         const kids = v2Kids(e.event_id).filter(k=>k.day_refs?.includes(d))
-          .sort((a,b)=>(a.time_window?.start??'99').localeCompare(b.time_window?.start??'99') || a.seq-b.seq);
+          .sort((a,b)=>a.seq-b.seq || (a.time_window?.start??'99').localeCompare(b.time_window?.start??'99'));
         const t = timeLabel(e);
-        html += `<div class="tl-aoi" data-eid="${e.event_id}"><div class="tl-aoi-head">◱ ${esc(e.name)}${t?` <span class="t">${esc(t)}</span>`:''}${e.detail?.boundary_status==='failed'?' <span class="fill">边界待确认</span>':''}</div>`
+        const cf = cfIds.has(e.event_id);
+        const pin = e.time_window?.pinned ? '<span class="pin-mark">📌</span>' : '';
+        html += `<div class="tl-aoi ${cf?'conflict':''}" data-eid="${e.event_id}" draggable="true" ${cf?`title="${esc(cfMsg(e.event_id))}"`:''}><div class="tl-aoi-head">◱ ${pin}${esc(e.name)}${t?` <span class="t">${esc(t)}</span>`:''}${e.detail?.boundary_status==='failed'?' <span class="fill">边界待确认</span>':''}</div>`
           + kids.map(k=>row(k,true)).join('') + '</div>';
         continue;
       }
@@ -825,7 +866,7 @@ function renderPool(){
         try{
           const r = await fetch('/api/checklist/toggle'+pj(), { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ item_id:id, done:!item.done }) });
           const data = await r.json();
-          if(r.ok){ S = { trip:data.trip, pending:data.pending, ops:data.ops, conv:data.conv }; renderAll(); }
+          if(r.ok){ S = { trip:data.trip, pending:data.pending, ops:data.ops, conv:data.conv, conflicts:data.conflicts ?? [] }; renderAll(); }
         }catch(e){ /* 网络失败保持原状 */ }
       };
     });
@@ -842,7 +883,7 @@ function renderPool(){
         try{
           const r = await fetch('/api/checklist/note'+pj(), { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ item_id:id, note }) });
           const data = await r.json();
-          if(r.ok){ S = { trip:data.trip, pending:data.pending, ops:data.ops, conv:data.conv }; renderAll(); }
+          if(r.ok){ S = { trip:data.trip, pending:data.pending, ops:data.ops, conv:data.conv, conflicts:data.conflicts ?? [] }; renderAll(); }
         }catch(e){ /* 网络失败保持原状 */ }
       };
       inp.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); inp.blur(); } });
@@ -1222,7 +1263,7 @@ async function sendInput(text){
     showThinking(false);
     if(!r.ok){ addEntry('agent', `（系统）出错了：${data.error || r.status}`); fetchStateSoon(); }
     else{
-      S = { trip: data.trip, pending: data.pending, ops: data.ops, conv: data.conv, failedTurn: data.failedTurn ?? null };
+      S = { trip: data.trip, pending: data.pending, ops: data.ops, conv: data.conv, failedTurn: data.failedTurn ?? null, conflicts: data.conflicts ?? [] };
       renderAll();
     }
   }catch(e){
@@ -1245,7 +1286,7 @@ async function retryTurn(){
     showThinking(false);
     if(!r.ok){ addEntry('agent', `（系统）${data.error || ('出错了：'+r.status)}`); fetchStateSoon(); }
     else{
-      S = { trip: data.trip, pending: data.pending, ops: data.ops, conv: data.conv, failedTurn: data.failedTurn ?? null };
+      S = { trip: data.trip, pending: data.pending, ops: data.ops, conv: data.conv, failedTurn: data.failedTurn ?? null, conflicts: data.conflicts ?? [] };
       renderAll();
     }
   }catch(e){
@@ -1269,7 +1310,7 @@ async function decidePending(id, approve){
     showThinking(false);
     if(!r.ok){ addEntry('agent', `（系统）${data.error || ('出错了：'+r.status)}`); fetchStateSoon(); }
     else{
-      S = { trip: data.trip, pending: data.pending, ops: data.ops, conv: data.conv, failedTurn: data.failedTurn ?? null };
+      S = { trip: data.trip, pending: data.pending, ops: data.ops, conv: data.conv, failedTurn: data.failedTurn ?? null, conflicts: data.conflicts ?? [] };
       renderAll();
     }
   }catch(e){
@@ -1356,9 +1397,107 @@ $('tlCollapse').onclick=()=>timeline.classList.remove('expanded');
 $('railChips').onclick = e=>{ const c = e.target.closest('.day-chip'); if(c){ e.stopPropagation(); scrollToDay(+c.dataset.day); } };
 $('tlDayBar').onclick = e=>{ const c = e.target.closest('.db-chip'); if(c) scrollToDay(+c.dataset.day); };
 $('tlDays').onclick = e=>{
+  const btn = e.target.closest('.acts button');
+  if(btn){ e.stopPropagation(); handleEvAct(btn.dataset.act, btn.closest('[data-eid]').dataset.eid, btn); return; }
   const row = e.target.closest('[data-eid]'); if(!row) return;
   selectEvent(row.dataset.eid, {fromTimeline:true});
   panMapToEvent(row.dataset.eid);
+};
+
+/* ================= 0.5 共创编辑器：操作钮 / 编辑弹层 / 拖拽重排 ================= */
+async function apiEdit(path, body, method='POST'){
+  const r = await fetch(path+pj(), { method, headers:{'content-type':'application/json'}, body: JSON.stringify(body??{}) });
+  const data = await r.json();
+  if(!r.ok){ feedLine('op','编辑', `未保存：${esc(data.error || r.status)}`, null, Date.now()); return null; }
+  S = { trip: data.trip, pending: data.pending, ops: data.ops, conv: data.conv, failedTurn: data.failedTurn ?? null, conflicts: data.conflicts ?? [] };
+  renderAll();
+  return data;
+}
+function handleEvAct(act, id, anchor){
+  const e = v2All()[id]; if(!e) return;
+  if(act==='pin'){ apiEdit(`/api/events/${id}/pin`, { pinned: !e.time_window?.pinned }); }
+  else if(act==='ins'){
+    const name = prompt('在这段通勤上插入点位（名称）：');
+    if(name?.trim()) apiEdit('/api/events/insert-on-route', { route_id: id, name: name.trim() });
+  }
+  else if(act==='edit') openEvEdit(e, anchor);
+}
+const ROUTE_MODES = ['步行','骑行','公交','地铁','驾车','火车','飞机','大巴'];
+function openEvEdit(e, anchor){
+  const box = $('evEdit');
+  const tw = e.time_window || {};
+  box.innerHTML = `<h4>${esc(e.name)}</h4>
+    <div class="er"><label>开始</label><input id="eeStart" placeholder="HH:MM" value="${esc(tw.start??'')}">
+    <label style="width:32px">结束</label><input id="eeEnd" placeholder="HH:MM" value="${esc(tw.end??'')}"></div>
+    ${e.kind==='route'?`<div class="er"><label>交通方式</label><select id="eeMode">${ROUTE_MODES.map(m=>`<option ${m===e.detail?.mode?'selected':''}>${m}</option>`).join('')}</select></div>`:''}
+    <div class="er"><label>备注</label><input id="eeNote" value="${esc(e.note??'')}" placeholder="随手记一笔"></div>
+    <div class="ea"><span class="emsg" id="eeMsg"></span><button class="btn ghost" id="eeCancel">取消</button><button class="btn" id="eeSave">保存</button></div>`;
+  const r = anchor.getBoundingClientRect();
+  box.style.display = 'block';
+  box.style.left = Math.min(r.left, innerWidth - 310) + 'px';
+  box.style.top = Math.min(r.bottom + 6, innerHeight - 220) + 'px';
+  $('eeCancel').onclick = ()=>{ box.style.display = 'none'; };
+  $('eeSave').onclick = async ()=>{
+    const s = $('eeStart').value.trim(), en = $('eeEnd').value.trim();
+    const hhmm = v=>!v || /^\d{1,2}:\d{2}$/.test(v);
+    if(!hhmm(s) || !hhmm(en)){ $('eeMsg').textContent = '时间格式 HH:MM'; return; }
+    const patch = { time_window: { start: s||null, end: en||null }, note: $('eeNote').value };
+    if(e.kind==='route') patch.mode = $('eeMode').value;
+    box.style.display = 'none';
+    await apiEdit(`/api/events/${e.event_id}`, { patch }, 'PATCH');
+  };
+  $('eeStart').focus();
+}
+// 点别处收起弹层
+document.addEventListener('mousedown', e=>{
+  const box = $('evEdit');
+  if(box.style.display==='block' && !box.contains(e.target) && !e.target.closest('.acts')) box.style.display = 'none';
+});
+/* 拖拽重排：仅顶层事件（嵌套子事件不重排）；落点在上半=插到目标前，下半=插到后 */
+let tlDragId = null;
+$('tlDays').addEventListener('dragstart', e=>{
+  const row = e.target.closest('[data-eid]');
+  if(!row || row.classList.contains('tl-nested')){ e.preventDefault(); return; }
+  tlDragId = row.dataset.eid;
+  e.dataTransfer.effectAllowed = 'move';
+});
+$('tlDays').addEventListener('dragover', e=>{
+  if(!tlDragId) return;
+  const row = e.target.closest('[data-eid]');
+  if(!row || row.classList.contains('tl-nested') || row.dataset.eid===tlDragId) return;
+  e.preventDefault();
+  const top = e.clientY < row.getBoundingClientRect().top + row.offsetHeight/2;
+  row.classList.toggle('drag-top', top); row.classList.toggle('drag-bottom', !top);
+});
+$('tlDays').addEventListener('dragleave', e=>{ const row = e.target.closest('[data-eid]'); row?.classList.remove('drag-top','drag-bottom'); });
+$('tlDays').addEventListener('drop', async e=>{
+  const row = e.target.closest('[data-eid]');
+  if(!tlDragId || !row) return;
+  e.preventDefault();
+  const dayEl = row.closest('.tl-day');
+  const day = +dayEl?.dataset.day;
+  if(!day){ tlDragId = null; return; }
+  const ids = [...dayEl.querySelectorAll(':scope > [data-eid]')].map(x=>x.dataset.eid).filter(id=>id!==tlDragId);
+  const top = e.clientY < row.getBoundingClientRect().top + row.offsetHeight/2;
+  ids.splice(ids.indexOf(row.dataset.eid) + (top?0:1), 0, tlDragId);
+  tlDragId = null;
+  await apiEdit('/api/events/reorder', { day, ordered_ids: ids });
+});
+$('tlDays').addEventListener('dragend', ()=>{ tlDragId = null; $('tlDays').querySelectorAll('.drag-top,.drag-bottom').forEach(x=>x.classList.remove('drag-top','drag-bottom')); });
+
+/* 0.5 e6 出行方式 chip：公共交通 ↔ 自驾，直写 mobility 槽位（白名单 REST，不经 LLM 轮） */
+function renderMobChip(){
+  const v = S?.trip?.slots?.mobility;
+  $('mobChip').textContent = v==='self_drive' ? '🚗 自驾' : '🚇 公共交通';
+  $('mobChip').classList.toggle('on', v==='self_drive');
+}
+$('mobChip').onclick = async ()=>{
+  const cur = S?.trip?.slots?.mobility==='self_drive' ? 'self_drive' : 'general';
+  const next = cur==='self_drive' ? 'general' : 'self_drive';
+  const r = await fetch('/api/slots/mobility'+pj(), { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ value: next }) });
+  const data = await r.json();
+  if(r.ok){ S = { trip:data.trip, pending:data.pending, ops:data.ops, conv:data.conv, failedTurn:data.failedTurn ?? null, conflicts:data.conflicts ?? [] }; renderAll(); }
+  else feedLine('op','出行方式', `未保存：${esc(data.error || r.status)}`, null, Date.now());
 };
 
 /* ================= 主页 · 项目清单与入口 ================= */
