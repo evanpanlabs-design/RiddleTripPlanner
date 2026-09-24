@@ -5,6 +5,27 @@
  * 查不到的字段留 null（共创哲学：进清单由用户回填，不编造）。 */
 import { baiduGet } from "./baidu.ts";
 import type { OpeningDetail } from "../memory/event-v2.ts";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
+/** 0.4.4 数据源翻牌：百度搜索额度极小（~100 次/月），富化结果按 名称+城市 磁盘缓存 30 天，
+ * 改稿/重建方案时同名点位零重复调用；缓存不存在的字段也照存（负缓存），避免反复打空枪。 */
+const CACHE_TTL_MS = 30 * 24 * 3600_000;
+const CACHE_DIR = join(import.meta.dirname, "../../runs/_cache/baidu-place");
+const cacheFile = (key: string) => join(CACHE_DIR, `${Buffer.from(key).toString("base64url")}.json`);
+function readPlaceCache(key: string): { hit: BaiduPoiHit | null; detail: BaiduPlaceDetail | null } | null {
+  try {
+    const raw = JSON.parse(readFileSync(cacheFile(key), "utf8"));
+    if (Date.now() - (raw.fetched_at ?? 0) > CACHE_TTL_MS) return null;
+    return { hit: raw.hit ?? null, detail: raw.detail ?? null };
+  } catch { return null; }
+}
+function writePlaceCache(key: string, hit: BaiduPoiHit | null, detail: BaiduPlaceDetail | null) {
+  try {
+    mkdirSync(CACHE_DIR, { recursive: true });
+    writeFileSync(cacheFile(key), JSON.stringify({ fetched_at: Date.now(), hit, detail }));
+  } catch { /* 缓存写失败不影响主流程 */ }
+}
 
 export interface BaiduPoiHit {
   baidu_uid: string;
@@ -83,15 +104,19 @@ export async function placeDetail(uid: string): Promise<BaiduPlaceDetail | null>
   };
 }
 
-/** 一站式富化：检索 + 详情。任一步失败返回已拿到的部分（best-effort，不阻断落图） */
+/** 一站式富化：检索 + 详情（带 30 天磁盘缓存）。任一步失败返回已拿到的部分（best-effort，不阻断落图） */
 export async function enrichFromBaidu(name: string, city?: string): Promise<(BaiduPoiHit & { detail: BaiduPlaceDetail | null }) | null> {
+  const key = `${(city ?? "").trim()}|${name.trim()}`.toLowerCase();
+  const cached = readPlaceCache(key);
+  if (cached) return cached.hit ? { ...cached.hit, detail: cached.detail } : null;
   try {
     const hit = await searchBaiduPoi(name, city);
-    if (!hit) return null;
+    if (!hit) { writePlaceCache(key, null, null); return null; }
     let detail: BaiduPlaceDetail | null = null;
     try { detail = await placeDetail(hit.baidu_uid); } catch { /* 详情失败只留检索结果 */ }
+    writePlaceCache(key, hit, detail);
     return { ...hit, detail };
   } catch {
-    return null; // 百度未配置 AK / 网络失败：全部留空，走共创
+    return null; // 百度未配置 AK / 网络失败：全部留空，走共创（不写缓存，下次再试）
   }
 }

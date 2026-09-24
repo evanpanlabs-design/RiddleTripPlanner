@@ -585,9 +585,11 @@ async function applyDraftV2(store: TripStore, draft: DraftV2, emit?: (ev: Riddle
         }
       } catch { /* 单点失败降级为无坐标，不阻断落图 */ }
     }
-    // 百度富化：opening_detail / price / rating / scope_grade / classified_poi_tag（best-effort）
+    // 百度富化：opening_detail / price / rating / scope_grade / classified_poi_tag（best-effort）。
+    // 0.4.4：已有 API 级富化字段的事件跳过——改稿重建树时不重复消耗百度额度（缓存之外的第二道闸）
+    const rich = isPoi(ev) && ev.detail.opening_detail?.source === "api" && ev.detail.price && ev.detail.rating;
     try {
-      const en = await enrichFromBaidu(ev.name, cityHint);
+      const en = rich ? null : await enrichFromBaidu(ev.name, cityHint);
       if (en) {
         if (isPoi(ev)) {
           ev.detail.poi_ref = { ...ev.detail.poi_ref, baidu_uid: en.baidu_uid };
