@@ -15,7 +15,7 @@ import { ResilientJudge } from "./jev/resilient-judge.ts";
 import { TH, d4ChecklistMatchQuestions } from "./jev/questions.ts";
 import { TripStore, tripSummary, planDesc, gateReport, destList, type Trip } from "./memory/trip-store.ts";
 import { assembleDraft, checkChainCompleteness, checkPlanQuality, isAoi, isPoi, isRoute, childrenOf, type DraftV2, type EventV2, type RouteEvent, type AoiEvent, type PoiEvent } from "./memory/event-v2.ts";
-import { mergeTimeSovereignty, checkTimeConflicts, pushPlanBatch } from "./memory/edits.ts";
+import { mergeTimeSovereignty, checkTimeConflicts, pushPlanBatch, clearPlanBatch } from "./memory/edits.ts";
 import { readEventDoc, writeEventDocLayer } from "./memory/event-docs.ts";
 import { enrichFromBaidu } from "./tools/baidu-place.ts";
 import { fetchAoiBoundary, convexHull } from "./tools/osm-aoi.ts";
@@ -207,7 +207,7 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
 事件分三类：poi（点：游览/住宿/场站，detail.role 标 lodging/terminal，默认 activity）、route（线：通勤段，detail.from/to 填两端事件的 tmp_id，detail.mode 写真实通勤方式——同城步行/骑行/公交/地铁/驾车，跨城火车/飞机/大巴）、aoi（面：景区，子事件用 parent_id 指它，AOI 不套 AOI，深度 ≤3）。
 硬性要求（V8 结构校验，违反直接打回重提）：① 同一天内相邻两个顶层活动事件（poi/aoi）之间必须有 route 连接（若一端是景区，route 端点可填该景区内部的出入口子事件）；② 景区（aoi）内部同一天相邻的子活动之间同样要有 route（观光车/步行/索道等）。不允许只罗列活动而省略通勤环节。
 时间用 "HH:MM"（day_refs 标第几天，可跨日）；推断不了的留 null，绝不编造班次/票价/营业时间（系统会调真实 API 回填）。events 数组较大，工具参数请输出紧凑 JSON（无缩进无换行），note 控制在 20 字以内。
-分批提交（大行程必须）：事件总数 > 35 或单次 JSON 过长时，带 batch:{index,total} 按天分 2-4 段提交（每段 ≤ 25 个事件，days 只在第 1 段生效，checklist 建议全放最后一段）。前 total-1 段只进缓冲不校验，最后一段到达后整树统一校验落图——中途不要回复用户，连续把各段提完。
+分批提交（大行程必须）：事件总数 > 35 或单次 JSON 过长时，带 batch:{index,total} 按天分 2-4 段提交（每段 ≤ 25 个事件，days 只在第 1 段生效，checklist 建议全放最后一段）。各段进缓冲（同段号重提=覆盖），齐了之后整树统一校验落图——中途不要回复用户，连续把各段提完。若校验被打回，缓冲保留其余各段：只需修正并重提包含错误事件的那一段。
 示例：{"days":3,"events":[{"tmp_id":"e1","kind":"poi","name":"成都东站","day_refs":[1],"detail":{"role":"terminal"},"time_window":{"start":"07:30"}},{"tmp_id":"e2","kind":"route","name":"成都→九寨沟","day_refs":[1],"detail":{"mode":"大巴","from":"e1","to":"e3"}},{"tmp_id":"e3","kind":"aoi","name":"九寨沟","day_refs":[1,2,3]},{"tmp_id":"e4","kind":"poi","name":"则查洼沟","parent_id":"e3","seq":1,"day_refs":[2]}],"checklist":[...]}`,
     parameters: Type.Object({
       days: Type.Number(),
@@ -237,16 +237,19 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
       let draft = draftArg;
       // 分批提交：前 total-1 段只进缓冲不校验；最后一段到达后合并走原有管线
       const b = (draftArg as { batch?: { index: number; total: number } }).batch;
-      if (b && b.total > 1) {
-        const r = pushPlanBatch(store.trip.trip_id, b.index, b.total, draftArg as unknown as { days: number; events: unknown[]; checklist?: unknown[] });
+      const batched = !!b && b.total > 1;
+      if (batched) {
+        const r = pushPlanBatch(store.trip.trip_id, b!.index, b!.total, draftArg as unknown as { days: number; events: unknown[]; checklist?: unknown[] });
         if ("error" in r) return { content: [{ type: "text", text: `分批提交出错：${r.error}` }], details: {} };
-        if (!r.final) return { content: [{ type: "text", text: `已接收第 ${b.index}/${b.total} 段（累计 ${r.count} 个事件），未校验未落图。请立即继续提交第 ${b.index + 1} 段，全部提完前不要回复用户。` }], details: {} };
+        if (!r.final) return { content: [{ type: "text", text: `已接收第 ${b!.index}/${b!.total} 段（累计 ${r.count} 个事件，还缺第 ${r.missing.join("、")} 段），未校验未落图。请立即继续提交剩余分段，全部提完前不要回复用户。` }], details: {} };
         draft = r.merged as unknown as typeof draftArg;
       }
+      // 分批缓冲在打回时保留：修正后只需重提包含错误事件的那一段
+      const retryHint = batched ? "（分批缓冲已保留其余各段：修正后只需重提包含错误事件的那一段，不必从头分批）" : "";
       // 结构校验（组装 + V8 链条完整）在落图前：失败直接打回，不产生任何状态变更
       const pre = await applyDraftV2(store, draft as DraftV2, emit, /*dryRun*/ true);
       if (!pre.ok) {
-        return { content: [{ type: "text", text: `草案结构校验未通过，未落图。你必须在本轮内按下列修复指引修正后，重新调用 apply_plan 提交完整草案（不要只回复文字，也不要放弃提交）：\n${pre.errors.map(e => `- [${e.code}] ${e.message}`).join("\n")}` }], details: { errors: pre.errors } };
+        return { content: [{ type: "text", text: `草案结构校验未通过，未落图。你必须在本轮内按下列修复指引修正后，重新调用 apply_plan 提交完整草案（不要只回复文字，也不要放弃提交）：\n${pre.errors.map(e => `- [${e.code}] ${e.message}`).join("\n")}${retryHint}` }], details: { errors: pre.errors } };
       }
       store.snapshot("apply_plan");
       const applied = await applyDraftV2(store, draft as DraftV2, emit);
@@ -291,10 +294,11 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
         // 0.5 e8：钉住冲突/stale 的修复指引随打回文本给出
         const e1Str = pinnedCf.length ? `。钉住冲突（这些事件被用户钉死，绝不能改它们的时间，只能绕开重排其它事件或请求用户拔钉）：${pinnedCf.map(c => c.message).join("；")}` : "";
         const e2Str = staleRoutes.length ? `。${staleRoutes.length} 条通勤段处于 stale（端点/方式被用户改过），本次草案必须重算这些段` : "";
-        return { content: [{ type: "text", text: `校验未通过（${fails.join(", ")}），请修复后重新提交完整草案。概率：${probStr}${v8Str}${q3Str}${e1Str}${e2Str}` }], details: { verify, v8, quality, pinned_conflicts: pinnedCf, stale_routes: staleRoutes.map(r => r.event_id) } };
+        return { content: [{ type: "text", text: `校验未通过（${fails.join(", ")}），请修复后重新提交完整草案。概率：${probStr}${v8Str}${q3Str}${e1Str}${e2Str}${retryHint}` }], details: { verify, v8, quality, pinned_conflicts: pinnedCf, stale_routes: staleRoutes.map(r => r.event_id) } };
       }
-      // 落图校验通过：整树 draft → active（SPEC §3.1 status 语义）
+      // 落图校验通过：整树 draft → active（SPEC §3.1 status 语义）；分批缓冲功成身退
       for (const ev of Object.values(store.trip.events_v2 ?? {})) if (ev.status === "draft") ev.status = "active";
+      if (batched) clearPlanBatch(store.trip.trip_id);
       store.save();
       const { warnings, gaps, aoiAsync } = applied;
       const warnNote = warnings.length ? `。提示：${warnings.join("；")}` : "";

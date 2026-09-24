@@ -190,26 +190,37 @@ export function pinEvent(store: TripStore, eventId: string, pinned: boolean): vo
 
 export interface PlanBatchDraft { days: number; events: unknown[]; checklist?: unknown[] }
 export type PlanBatchPush =
-  | { final: false; count: number }
+  | { final: false; missing: number[]; count: number }
   | { final: true; merged: Required<PlanBatchDraft> }
   | { error: string };
 
-const planBatchBuffers = new Map<string, Required<PlanBatchDraft>>();
+interface PlanBatchState { total: number; days: number; parts: Map<number, { events: unknown[]; checklist: unknown[] }> }
+const planBatchBuffers = new Map<string, PlanBatchState>();
 
+/** 按段号存稿（幂等：同段号重提=覆盖）。所有段齐了之后合并返回，但缓冲保留——
+ * 校验被打回时只需修正并重提包含错误事件的那一段，不必从头分批。
+ * 缓冲只在落图成功（clearPlanBatch）或服务重启后消失。 */
 export function pushPlanBatch(tripId: string, index: number, total: number, draft: PlanBatchDraft): PlanBatchPush {
   if (!Number.isInteger(index) || !Number.isInteger(total) || total < 2 || index < 1 || index > total) {
     return { error: `batch 参数非法（index=${index}, total=${total}）：total 须 ≥2 且 1 ≤ index ≤ total` };
   }
-  if (index === 1) {
-    planBatchBuffers.set(tripId, { days: draft.days, events: [...draft.events], checklist: [...(draft.checklist ?? [])] });
-  } else {
-    const acc = planBatchBuffers.get(tripId);
-    if (!acc) return { error: `第 ${index} 段找不到前序缓冲（服务可能重启过或上批已提交）。请带 batch:{index:1,total:${total}} 从第 1 段重新分批提交` };
-    acc.events.push(...draft.events);
-    acc.checklist.push(...(draft.checklist ?? []));
+  let st = planBatchBuffers.get(tripId);
+  if (!st || st.total !== total) { // 新一批（或 total 变了）：重置
+    st = { total, days: draft.days, parts: new Map() };
+    planBatchBuffers.set(tripId, st);
   }
-  const acc = planBatchBuffers.get(tripId)!;
-  if (index < total) return { final: false, count: acc.events.length };
+  if (index === 1) st.days = draft.days; // days 以第 1 段为准
+  st.parts.set(index, { events: [...draft.events], checklist: [...(draft.checklist ?? [])] });
+  const missing: number[] = [];
+  for (let i = 1; i <= total; i++) if (!st.parts.has(i)) missing.push(i);
+  const count = [...st.parts.values()].reduce((n, p) => n + p.events.length, 0);
+  if (missing.length) return { final: false, missing, count };
+  const events: unknown[] = [], checklist: unknown[] = [];
+  for (let i = 1; i <= total; i++) { const p = st.parts.get(i)!; events.push(...p.events); checklist.push(...p.checklist); }
+  return { final: true, merged: { days: st.days, events, checklist } };
+}
+
+/** 落图成功后清缓冲（校验打回不清——保留各段供局部修正重提）。 */
+export function clearPlanBatch(tripId: string): void {
   planBatchBuffers.delete(tripId);
-  return { final: true, merged: acc };
 }
