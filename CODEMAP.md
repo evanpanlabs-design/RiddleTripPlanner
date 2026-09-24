@@ -43,14 +43,15 @@ server.ts ──► 每项目一个 RiddleRuntime（agent.ts createRiddleAgent�
 | `memory/event-v2.ts` | **v2 事件 Schema**（poi/route/aoi 判别联合 + 嵌套规则 + provenance） | `assembleDraft()`（扁平草案→树，结构校验打回）；`checkChainCompleteness()`（V8 嵌套感知链条硬校验：子树端点等价 + AOI 内部链条，0.4.2 起并入 D7 报告）；`checkPlanQuality()`（Q1–Q3 方案质量判断，0.4.3 起并入 D7：Q3 营业时段冲突=硬校验，Q1 折返/Q2 强度=建议级）；`walkTree/childrenOf` |
 | `memory/migrate-v2.ts` | v1→v2 迁移器（SPEC/event-model-v2.md §9） | `migrateTripV1toV2()`：Node_→poi / Edge_→route / Event_合并上移；status 与 provenance 映射 |
 | ~~`memory/project-v1.ts`~~ | 已删除（0.4.3） | v2→v1 投影兼容桥退役：前台/D7/摘要全部直读 v2 树 |
-| `tools/baidu-place.ts` | 百度 Place 检索+详情（0.4.1 富化） | `enrichFromBaidu()`：opening_detail/price/rating/scope_grade/classified_poi_tag |
+| `tools/baidu-place.ts` | 百度 Place 检索+详情（0.4.1 富化） | `enrichFromBaidu()`：opening_detail/price/rating/scope_grade/classified_poi_tag；0.4.4 起 30 天磁盘缓存（`runs/_cache/baidu-place/`，含负缓存；异常不写缓存） |
+| `tools/limiter.ts` | 共享限速器（0.4.4） | `createMinInterval(getIntervalMs)`：串行 Promise 链，间隔调用时动态读取 → 设置保存即时热生效；baidu/amap/llm-judge 三方共用 |
 | `tools/osm-aoi.ts` | OSM AOI 边界异步获取器（SPEC §7 第①级） | `fetchAoiBoundary()`（Nominatim→Overpass 镜像轮询→WGS84→GCJ02→DP 抽稀→30 天缓存）；`convexHull`（包络兜底） |
 | `scheduler/scheduler.ts` | 阶段机 + pending 队列（持久化） | `Scheduler.enqueue/dequeue/remove(id)`；队列落盘 `pending.json`，重启恢复 |
-| `tools/amap.ts` | 高德 Web 服务（POI/驾车/测地线） | `searchPoi`、`drivingRoute`、`geodesicM`；QPS 节流+退避 |
-| `tools/baidu.ts` | 百度 Direction v2 跨城大交通 | `intercityRoute(from, to, prefer)` → 真实车次/航班号+时刻+票价；GCJ02 直传免转换 |
-| `settings.ts` | 设置中心：三级解析（设置文件 > 环境变量 > 预设） | `resolveLlm/resolveJev/resolveAmapWebKey/resolveBaiduWebKey`——全部**调用时解析**（热生效）；`publicSettings`（脱敏快照） |
+| `tools/amap.ts` | 高德 Web 服务（POI/驾车/测地线；0.4.4 起主力数据源） | `searchPoi`、`drivingRoute`、`geodesicM`；限速走 `limiter.ts` 共享 throttle（v3/v4 共用一条队列，默认 2.5 QPS，设置可调） |
+| `tools/baidu.ts` | 百度 Direction v2 跨城大交通（0.4.4 起只留铁路大交通+详情富化） | `intercityRoute(from, to, prefer)` → 真实车次/航班号+时刻+票价；限速同 amap（独立 `baiduQps`） |
+| `settings.ts` | 设置中心：三级解析（设置文件 > 环境变量 > 预设） | `resolveLlm/resolveJev/resolveAmapWebKey/resolveBaiduWebKey/resolveLimits`——全部**调用时解析**（热生效）；`limits.llmRpm/amapQps/baiduQps`（null=默认：LLM 不限、地图 2.5 QPS）；`publicSettings`（脱敏快照，含 `limits.effective`） |
 | `settings-test.ts` | 四路连通性测试 | `testConnection(kind)`：llm/jev/amap/baidu |
-| `server.ts` | 多项目 HTTP 服务 | 项目注册表 `runs/projects.json`；SSE `broadcast`；路由表见文件头注释 |
+| `server.ts` | 多项目 HTTP 服务 | 项目注册表 `runs/projects.json`；SSE `broadcast`；`runTurn` 看门狗 + 0.4.4 网关故障留痕（`lastFailedTurn` → `failedTurn` 下发 + `/api/turn/retry` 重跑）；路由表见文件头注释 |
 
 ## 3. 仓库全景（含研究留档）
 
@@ -66,7 +67,8 @@ LAB/          实验场：lab01 高德路线放大镜、lab02 Python 版 agent �
 amap-skills/  高德 JSAPI 官方 skill 留档
 download/     竞品页面留档（圆周旅迹）
 runs/（APP/runs/）   运行时数据：projects.json 注册表、settings.json、
-              <trip_id>/{trip.json, ops.jsonl, conv.json, pending.json}
+              <trip_id>/{trip.json, ops.jsonl, conv.json, pending.json}、
+              _cache/（baidu-place 富化缓存，30 天 TTL，0.4.4 起）
 ```
 
 ## 4. 按问题找代码（推荐阅读路径）
