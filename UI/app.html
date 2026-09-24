@@ -111,9 +111,12 @@
   .entry{padding:18px 0 16px;border-bottom:1px solid var(--hair2)}
   .entry-date{font-style:italic;font-size:11px;color:var(--ink3);margin-bottom:8px;letter-spacing:.03em}
   .who{font-family:var(--mono);font-size:11px;letter-spacing:.14em;color:var(--ink3);text-transform:uppercase;margin-bottom:6px}
-  .entry p{line-height:1.75;color:var(--ink);text-wrap:pretty;white-space:pre-wrap}
-  .entry.user p{font-size:13.5px}
-  .entry.agent p{color:#4B4844}
+.entry p{line-height:1.75;color:var(--ink);text-wrap:pretty;white-space:pre-wrap}
+/* 0.4.4 消息视觉区分：用户 = 纸灰气泡（有边界的"我说的话"），Riddle = 文档流（无边界，融入日记） */
+.entry.user{background:var(--side);border:1px solid var(--hair);border-radius:10px;padding:12px 14px 10px;margin:10px 0 4px}
+.entry.user .who{margin-bottom:4px}
+.entry.user p{font-size:13.5px}
+.entry.agent p{color:#4B4844}
   .entry b{font-weight:600}
   .entry.thinking p{color:var(--ink3);font-style:italic}
   .live-text{line-height:1.75;color:#4B4844;white-space:pre-wrap;min-height:1.2em}
@@ -152,6 +155,17 @@
   .tl-full-head h2{font-family:var(--sans);font-size:15px;font-weight:600}
   .tl-collapse{font-family:var(--mono);font-size:11px;color:var(--ink2);letter-spacing:.1em;padding:3px 6px;border-radius:5px}
   .tl-collapse:hover{color:var(--ink);background:var(--hover)}
+  /* 0.4.4 折叠日带（横向 chip 条）+ 地图↔时间线联动 */
+  .tl-daybar{display:flex;gap:6px;overflow-x:auto;padding:8px 22px;border-bottom:1px solid var(--hair2);flex:none}
+  .tl-daybar .db-chip{white-space:nowrap;font-family:var(--mono);font-size:10.5px;color:var(--ink2);border:1px solid var(--hair);border-radius:20px;padding:3px 10px;cursor:pointer;background:var(--panel)}
+  .tl-daybar .db-chip:hover{color:var(--ink);border-color:var(--ink3)}
+  .tl-ev{cursor:pointer;border-radius:8px}
+  .tl-ev:hover{background:var(--hover)}
+  .tl-ev.poi:not(.tl-nested):hover{border-color:var(--ink3);background:#FFF}
+  .tl-ev.flash,.tl-aoi.flash{animation:tlFlash 1.6s ease-out}
+  @keyframes tlFlash{0%{background:var(--accent-soft)}100%{background:transparent}}
+  .day-chip{cursor:pointer}
+  .day-chip:hover{border-color:var(--ink3);color:var(--ink)}
   .tl-days{flex:1;overflow-y:auto;padding:6px 22px 24px}
   .tl-day{padding:14px 0;border-bottom:1px solid var(--hair2)}
   .tl-day-head{display:flex;align-items:baseline;gap:10px;margin-bottom:8px}
@@ -162,7 +176,14 @@
   .tl-ev .t{font-family:var(--mono);font-size:11px;color:var(--ink3);width:74px;min-width:74px;padding-top:2px;text-align:right}
   .tl-ev .bar{width:1px;background:var(--hair);min-height:100%}
   .tl-ev .body{color:#4B4844}
-  .tl-ev.transit .body{color:var(--ink2)}
+  /* 0.4.4 时间线视觉分层：顶层 POI = 白底圆角卡，ROUTE = 斜体灰字 + 圆点接线 */
+  .tl-ev.poi:not(.tl-nested){margin:6px 0 6px 16px;padding:7px 12px;border:1px solid var(--hair);border-radius:10px;background:#FFF;box-shadow:0 1px 2px rgba(15,15,15,.04)}
+  .tl-ev.poi:not(.tl-nested) .bar{display:none}
+  .tl-ev.poi:not(.tl-nested) .body{color:var(--ink);font-weight:500}
+  .tl-ev.transit .bar{width:8px;min-width:8px;background:none;position:relative}
+  .tl-ev.transit .bar::before{content:'';display:block;width:5px;height:5px;border-radius:50%;background:var(--ink3);margin:7px auto 0}
+  .tl-ev.transit .bar::after{content:'';position:absolute;left:50%;top:16px;bottom:-6px;width:1px;background:var(--hair)}
+  .tl-ev.transit .body{font-style:italic;color:var(--ink2)}
   .anchor-star{font-size:11px;color:var(--ink);margin-right:3px}
   /* 0.4.3 v2 树嵌套渲染：AOI 容器 + 子事件缩进 */
   .tl-aoi{border:1px solid var(--hair2);border-radius:8px;margin:6px 0 6px 20px;padding:4px 10px 4px 0;background:var(--paper2,#FBFAF8)}
@@ -402,6 +423,7 @@
         <h2 id="tlTitle">时间线</h2>
         <button class="tl-collapse" id="tlCollapse">收起 →</button>
       </div>
+      <div class="tl-daybar" id="tlDayBar"></div>
       <div class="tl-days scroll-thin" id="tlDays"></div>
     </div>
   </section>
@@ -586,6 +608,17 @@ function renderConv(){
   // 0.4.2 真阻塞 HITL：待决问题以卡片挂在对话尾部——点按钮产生结构化决定（/api/pending/decide），
   // 或直接文字回复（Jev 自然语言消费兜底）；决定前卡片不消失，挂起操作不恢复。
   for(const p of (S.pending||[])) box.appendChild(pendCardEl(p));
+  // 0.4.4 网关故障重试卡：turn 异常终止（看门狗/网关熔断）→ 带原输入一键重跑
+  if(S.failedTurn){
+    const el = document.createElement('div');
+    el.className = 'entry agent';
+    el.innerHTML = `<div class="jev-note pend-live"><span class="scales">⚠</span><span class="mono">网关故障</span> —— 上一轮中断了（${esc(String(S.failedTurn.error).slice(0,120))}），进度已保留。
+      <div class="pend-actions"><button class="btn">↻ 重试上一轮</button><button class="btn ghost">先不了</button></div></div>`;
+    const [retry, dismiss] = el.querySelectorAll('button');
+    retry.onclick = ()=>retryTurn();
+    dismiss.onclick = ()=>{ S.failedTurn = null; renderConv(); }; // 本地忽略（刷新后若服务端仍记着会再出现）
+    box.appendChild(el);
+  }
   nb.scrollTop = nb.scrollHeight;
 }
 function pendCardEl(p){
@@ -658,34 +691,48 @@ function evText(e){
   if(e.kind==='aoi'&&e.detail?.ticket?.amount!=null) bits.push(`¥${e.detail.ticket.amount}`);
   return star + esc(e.name) + (bits.length?` <span class="ev-meta">${bits.join(' · ')}</span>`:'') + (e.note?` · ${esc(e.note)}`:'');
 }
+/* 当日首末活动名（日带 chip / 日头摘要共用）；无活动返回空串 */
+function daySummary(d){
+  const acts = dayEvents(d).filter(e=>e.kind!=='route');
+  return acts.length ? `${acts[0].name}${acts.length>1?' → '+acts[acts.length-1].name:''}` : '';
+}
 function renderRail(){
   const days = S.trip.days || 0;
   $('railHint').textContent = days ? `时间线 · ${days} 天` : '时间线';
-  $('railChips').innerHTML = Array.from({length:days},(_,i)=>`<div class="day-chip">D${i+1}</div>`).join('');
+  $('railChips').innerHTML = Array.from({length:days},(_,i)=>{
+    const sum = daySummary(i+1);
+    return `<div class="day-chip" data-day="${i+1}" title="D${i+1}${sum?' · '+esc(sum):''}">D${i+1}</div>`;
+  }).join('');
 }
 function renderTimeline(){
   const days = S.trip.days || 0;
   const total = v2Live().length;
   $('tlTitle').textContent = days ? `时间线 · ${days} 天 ${total} 个行程点` : '时间线 · 未落图';
   let html = '';
-  const row = (e, nested)=>{
+  /* 0.4.4 时间语义：route = 抵达时刻，poi = 持续区间（缺 end 不再显示 “–?”），lodging 缺省“晚” */
+  const timeLabel = (e)=>{
     const tw = e.time_window;
     const isLodging = e.kind==='poi' && e.detail?.role==='lodging';
-    const t = tw?.start ? `${tw.start}–${tw.end??'?'}` : (isLodging?'晚':'时间未定');
-    return `<div class="tl-ev ${e.kind==='route'?'transit':''} ${nested?'tl-nested':''}"><span class="t">${esc(t)}</span><span class="bar"></span><span class="body">${evText(e)}</span></div>`;
+    if(e.kind==='route'){ const arr = tw?.end || tw?.start; return arr ? `${arr} 抵达` : ''; }
+    if(tw?.start && tw?.end) return `${tw.start}–${tw.end}`;
+    if(tw?.start) return tw.start;
+    return isLodging ? '晚' : '时间未定';
+  };
+  const row = (e, nested)=>{
+    const cls = e.kind==='route' ? 'transit' : (e.kind==='poi' ? 'poi' : '');
+    return `<div class="tl-ev ${cls} ${nested?'tl-nested':''}" data-eid="${e.event_id}"><span class="t">${esc(timeLabel(e))}</span><span class="bar"></span><span class="body">${evText(e)}</span></div>`;
   };
   for(let d=1; d<=days; d++){
     const tops = dayEvents(d);
-    const acts = tops.filter(e=>e.kind!=='route');
-    const sum = acts.length ? `${acts[0].name}${acts.length>1?' → '+acts[acts.length-1].name:''}` : '';
-    html += `<div class="tl-day"><div class="tl-day-head"><span class="tl-day-num">D${d}</span><span class="tl-day-sum">${esc(sum)}</span></div>`;
+    const sum = daySummary(d);
+    html += `<div class="tl-day" data-day="${d}"><div class="tl-day-head"><span class="tl-day-num">D${d}</span><span class="tl-day-sum">${esc(sum)}</span></div>`;
     for(const e of tops){
       // AOI 以嵌套容器渲染：当天有子事件则展开子链，否则按普通行呈现
       if(e.kind==='aoi'){
         const kids = v2Kids(e.event_id).filter(k=>k.day_refs?.includes(d))
           .sort((a,b)=>(a.time_window?.start??'99').localeCompare(b.time_window?.start??'99') || a.seq-b.seq);
         if(kids.length){
-          html += `<div class="tl-aoi"><div class="tl-aoi-head">◱ ${esc(e.name)}${e.detail?.boundary_status==='failed'?' <span class="fill">边界待确认</span>':''}</div>`
+          html += `<div class="tl-aoi" data-eid="${e.event_id}"><div class="tl-aoi-head">◱ ${esc(e.name)}${e.detail?.boundary_status==='failed'?' <span class="fill">边界待确认</span>':''}</div>`
             + kids.map(k=>row(k,true)).join('') + '</div>';
           continue;
         }
@@ -695,6 +742,38 @@ function renderTimeline(){
     html += '</div>';
   }
   $('tlDays').innerHTML = html || '<div class="empty-hint">方案生成后按天排在这里。</div>';
+  // 横向日带：D1 · 首→末，点击定位到当天
+  $('tlDayBar').innerHTML = days ? Array.from({length:days},(_,i)=>{
+    const sum = daySummary(i+1);
+    return `<span class="db-chip" data-day="${i+1}">D${i+1}${sum?' · '+esc(sum):''}</span>`;
+  }).join('') : '';
+}
+
+/* ---- 地图↔时间线双向联动（0.4.4） ---- */
+function scrollToDay(d){
+  $('timeline').classList.add('expanded');
+  const el = $('tlDays').querySelector(`[data-day="${d}"]`);
+  el?.scrollIntoView({behavior:'smooth', block:'start'});
+}
+function flashTimelineRow(id){
+  $('timeline').classList.add('expanded');
+  const el = $('tlDays').querySelector(`[data-eid="${CSS.escape(id)}"]`);
+  if(!el) return;
+  el.scrollIntoView({behavior:'smooth', block:'center'});
+  el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+  setTimeout(()=>el.classList.remove('flash'), 1700);
+}
+function panMapToEvent(id){
+  if(!mapReady) return;
+  const e = v2All()[id]; if(!e) return;
+  let geo = null;
+  if(e.kind==='route'){
+    const g = e.detail?.geometry;
+    geo = Array.isArray(g) && g.length ? {lng:g[Math.floor(g.length/2)][0], lat:g[Math.floor(g.length/2)][1]} : v2Geo(v2All()[e.detail?.from_ref]);
+  } else geo = v2Geo(e);
+  if(!geo) return;
+  map.setCenter([geo.lng, geo.lat]);
+  if(map.getZoom() < 10) map.setZoom(12);
 }
 
 /* ================= 候选池 / 清单 ================= */
@@ -783,8 +862,9 @@ function setDetail(name,kind,kvs){
     `<div class="kv"><span class="k">${k}</span><span class="v ${/坐标|数据|POI/.test(k)?'mono':''}">${v}</span></div>`).join('');
 }
 /* 详情面板：消费 v2 事件（poi/aoi/route 三类）——评分/价格/营业时段是 0.4.1 抓回、0.4.3 首次上前台的字段 */
-function selectEvent(id){
+function selectEvent(id, opts){
   const e = v2All()[id]; if(!e) return;
+  if(!opts?.fromTimeline) flashTimelineRow(id); // 地图点选 → 时间线定位高亮
   const d = e.detail || {};
   const days = (e.day_refs||[]).length ? 'D'+e.day_refs.join('/D') : '—';
   if(e.kind==='route'){
@@ -1140,9 +1220,9 @@ async function sendInput(text){
     const r = await fetch('/api/input'+pj(), { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({text}) });
     const data = await r.json();
     showThinking(false);
-    if(!r.ok){ addEntry('agent', `（系统）出错了：${data.error || r.status}`); }
+    if(!r.ok){ addEntry('agent', `（系统）出错了：${data.error || r.status}`); fetchStateSoon(); }
     else{
-      S = { trip: data.trip, pending: data.pending, ops: data.ops, conv: data.conv };
+      S = { trip: data.trip, pending: data.pending, ops: data.ops, conv: data.conv, failedTurn: data.failedTurn ?? null };
       renderAll();
     }
   }catch(e){
@@ -1151,6 +1231,29 @@ async function sendInput(text){
   }finally{
     busy = false;
     $('nbText').disabled = false; $('nbSend').disabled = false; $('nbText').focus();
+  }
+}
+/* 0.4.4 网关故障重试卡：一键带原输入重跑（服务端记着的 lastFailedTurn，用户消息不重复入 conv） */
+async function retryTurn(){
+  if(busy) return;
+  busy = true;
+  $('nbText').disabled = true; $('nbSend').disabled = true;
+  showThinking(true);
+  try{
+    const r = await fetch('/api/turn/retry'+pj(), { method:'POST' });
+    const data = await r.json();
+    showThinking(false);
+    if(!r.ok){ addEntry('agent', `（系统）${data.error || ('出错了：'+r.status)}`); fetchStateSoon(); }
+    else{
+      S = { trip: data.trip, pending: data.pending, ops: data.ops, conv: data.conv, failedTurn: data.failedTurn ?? null };
+      renderAll();
+    }
+  }catch(e){
+    showThinking(false);
+    addEntry('agent', `（系统）请求失败：${e.message}`);
+  }finally{
+    busy = false;
+    $('nbText').disabled = false; $('nbSend').disabled = false;
   }
 }
 /* 0.4.2 卡片真阻塞 HITL：结构化决定直达服务端（不经 Jev 自然语言判断），
@@ -1166,7 +1269,7 @@ async function decidePending(id, approve){
     showThinking(false);
     if(!r.ok){ addEntry('agent', `（系统）${data.error || ('出错了：'+r.status)}`); fetchStateSoon(); }
     else{
-      S = { trip: data.trip, pending: data.pending, ops: data.ops, conv: data.conv };
+      S = { trip: data.trip, pending: data.pending, ops: data.ops, conv: data.conv, failedTurn: data.failedTurn ?? null };
       renderAll();
     }
   }catch(e){
@@ -1249,6 +1352,14 @@ const timeline=$('timeline'), tlRail=$('tlRail');
 tlRail.onclick=()=>timeline.classList.add('expanded');
 tlRail.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();timeline.classList.add('expanded');}});
 $('tlCollapse').onclick=()=>timeline.classList.remove('expanded');
+// 0.4.4 联动接线：日 chip 定位当天；时间线行点选 → 详情 + 地图 pan/zoom
+$('railChips').onclick = e=>{ const c = e.target.closest('.day-chip'); if(c){ e.stopPropagation(); scrollToDay(+c.dataset.day); } };
+$('tlDayBar').onclick = e=>{ const c = e.target.closest('.db-chip'); if(c) scrollToDay(+c.dataset.day); };
+$('tlDays').onclick = e=>{
+  const row = e.target.closest('[data-eid]'); if(!row) return;
+  selectEvent(row.dataset.eid, {fromTimeline:true});
+  panMapToEvent(row.dataset.eid);
+};
 
 /* ================= 主页 · 项目清单与入口 ================= */
 function showView(name){
