@@ -161,7 +161,7 @@
   .tl-daybar .db-chip:hover{color:var(--ink);border-color:var(--ink3)}
   .tl-ev{cursor:pointer;border-radius:8px}
   .tl-ev:hover{background:var(--hover)}
-  .tl-ev.poi:not(.tl-nested):hover{border-color:var(--ink3);background:#FFF}
+  .tl-ev.poi:hover{border-color:var(--ink3);background:#FFF}
   .tl-ev.flash,.tl-aoi.flash{animation:tlFlash 1.6s ease-out}
   @keyframes tlFlash{0%{background:var(--accent-soft)}100%{background:transparent}}
   .day-chip{cursor:pointer}
@@ -176,18 +176,18 @@
   .tl-ev .t{font-family:var(--mono);font-size:11px;color:var(--ink3);width:74px;min-width:74px;padding-top:2px;text-align:right}
   .tl-ev .bar{width:1px;background:var(--hair);min-height:100%}
   .tl-ev .body{color:#4B4844}
-  /* 0.4.4 时间线视觉分层：顶层 POI = 白底圆角卡，ROUTE = 斜体灰字 + 圆点接线 */
-  .tl-ev.poi:not(.tl-nested){margin:6px 0 6px 16px;padding:7px 12px;border:1px solid var(--hair);border-radius:10px;background:#FFF;box-shadow:0 1px 2px rgba(15,15,15,.04)}
-  .tl-ev.poi:not(.tl-nested) .bar{display:none}
-  .tl-ev.poi:not(.tl-nested) .body{color:var(--ink);font-weight:500}
+  /* 0.4.4 时间线视觉分层：POI = 白底圆角卡（AOI 内也是卡，框中框更紧凑），ROUTE = 斜体灰字 + 缩进细线；POI/AOI 字号比 ROUTE 大 */
+  .tl-ev.poi{margin:6px 0 6px 16px;padding:7px 12px;border:1px solid var(--hair);border-radius:10px;background:#FFF;box-shadow:0 1px 2px rgba(15,15,15,.04)}
+  .tl-ev.poi .bar{display:none}
+  .tl-ev.poi .body{color:var(--ink);font-weight:500;font-size:13.5px}
+  .tl-ev.poi.tl-nested{margin:4px 0;padding:6px 10px}
   .tl-ev.transit .bar{width:8px;min-width:8px;background:none;position:relative}
-  .tl-ev.transit .bar::before{content:'';display:block;width:5px;height:5px;border-radius:50%;background:var(--ink3);margin:7px auto 0}
-  .tl-ev.transit .bar::after{content:'';position:absolute;left:50%;top:16px;bottom:-6px;width:1px;background:var(--hair)}
+  .tl-ev.transit .bar::after{content:'';position:absolute;left:50%;top:6px;bottom:-6px;width:1px;background:var(--hair)}
   .tl-ev.transit .body{font-style:italic;color:var(--ink2)}
   .anchor-star{font-size:11px;color:var(--ink);margin-right:3px}
   /* 0.4.3 v2 树嵌套渲染：AOI 容器 + 子事件缩进 */
   .tl-aoi{border:1px solid var(--hair2);border-radius:8px;margin:6px 0 6px 20px;padding:4px 10px 4px 0;background:var(--paper2,#FBFAF8)}
-  .tl-aoi-head{display:flex;gap:8px;align-items:baseline;padding:4px 0 2px 10px;font-size:12px;color:var(--ink);font-weight:600}
+  .tl-aoi-head{display:flex;gap:8px;align-items:baseline;padding:4px 0 2px 10px;font-size:13.5px;color:var(--ink);font-weight:600}
   .tl-aoi-head .t{font-family:var(--mono);font-size:11px;color:var(--ink3);font-weight:400}
   .tl-ev.tl-nested{padding-left:10px}
   .ev-meta{font-family:var(--mono);font-size:10px;color:var(--ink3)}
@@ -729,13 +729,13 @@ function renderTimeline(){
     for(const e of tops){
       // AOI 以嵌套容器渲染：当天有子事件则展开子链，否则按普通行呈现
       if(e.kind==='aoi'){
+        // AOI 一律带框（无子事件 = 只有头部的框，如黄龙）；子事件在框内也是卡（框中框）
         const kids = v2Kids(e.event_id).filter(k=>k.day_refs?.includes(d))
           .sort((a,b)=>(a.time_window?.start??'99').localeCompare(b.time_window?.start??'99') || a.seq-b.seq);
-        if(kids.length){
-          html += `<div class="tl-aoi" data-eid="${e.event_id}"><div class="tl-aoi-head">◱ ${esc(e.name)}${e.detail?.boundary_status==='failed'?' <span class="fill">边界待确认</span>':''}</div>`
-            + kids.map(k=>row(k,true)).join('') + '</div>';
-          continue;
-        }
+        const t = timeLabel(e);
+        html += `<div class="tl-aoi" data-eid="${e.event_id}"><div class="tl-aoi-head">◱ ${esc(e.name)}${t?` <span class="t">${esc(t)}</span>`:''}${e.detail?.boundary_status==='failed'?' <span class="fill">边界待确认</span>':''}</div>`
+          + kids.map(k=>row(k,true)).join('') + '</div>';
+        continue;
       }
       html += row(e,false);
     }
