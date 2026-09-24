@@ -5,12 +5,13 @@
  * 注意：请求 origin/destination 是 lat,lng（纬度在前，与高德相反）；
  *      返回 path 折线是 lng,lat（与高德 polyline 一致，直接可绘）。
  * 实测结构见 KB/baidu-webservice/INDEX.md（2026-09-22）。 */
-import { resolveBaiduWebKey } from "../settings.ts";
+import { resolveBaiduWebKey, resolveLimits } from "../settings.ts";
 import { geodesicM } from "./amap.ts";
+import { createMinInterval } from "./limiter.ts";
 
 const BASE = "https://api.map.baidu.com";
-const MIN_INTERVAL = 400;
-let lastCall = 0;
+/** QPS 限速（0.4.4 起可在设置中心调，默认 2.5 qps = 400ms 间隔，热生效） */
+const throttle = createMinInterval(() => 1000 / resolveLimits().baiduQps);
 
 /** BD-09 → GCJ-02（存量数据迁移用：修复 ret_coordtype 缺失前落盘的百度折线） */
 const X_PI = Math.PI * 3000.0 / 180.0;
@@ -25,9 +26,7 @@ export function bd09ToGcj02(lng: number, lat: number): [number, number] {
 export async function baiduGet(path: string, params: Record<string, string>): Promise<any> {
   const ak = resolveBaiduWebKey();
   if (!ak) throw new Error("未配置百度服务端 AK（设置 → 百度地图，或环境变量 BAIDU_MAP_AK / BAIDU_WEB_SERVICE_AK）");
-  const wait = MIN_INTERVAL - (Date.now() - lastCall);
-  if (wait > 0) await new Promise(r => setTimeout(r, wait));
-  lastCall = Date.now();
+  await throttle();
   const resp = await fetch(`${BASE}${path}?${new URLSearchParams({ ...params, ak })}`);
   const data = await resp.json();
   if (data.status === 0) return data;

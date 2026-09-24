@@ -1,18 +1,17 @@
 /** 高德 Web Service（移植自 LAB/lab02 amap_tools.py，含 QPS 节流+退避）。
  * key 每次请求前经设置中心动态解析，保存设置后即时生效。
  * Hybrid 能力路由：高德固定承担 POI 检索/同城算路/底图，跨城大交通走百度（baidu.ts）。 */
-import { resolveAmapWebKey } from "../settings.ts";
+import { resolveAmapWebKey, resolveLimits } from "../settings.ts";
+import { createMinInterval } from "./limiter.ts";
 
 const BASE = "https://restapi.amap.com";
-const MIN_INTERVAL = 400;
-let lastCall = 0;
+/** QPS 限速（0.4.4 起可在设置中心调，默认 2.5 qps = 400ms 间隔，热生效）；v3/v4 共用一条队列 */
+const throttle = createMinInterval(() => 1000 / resolveLimits().amapQps);
 
 async function amapGet(path: string, params: Record<string, string>, retries = 2): Promise<any> {
   const key = resolveAmapWebKey();
   for (let attempt = 0; attempt <= retries; attempt++) {
-    const wait = MIN_INTERVAL - (Date.now() - lastCall);
-    if (wait > 0) await new Promise(r => setTimeout(r, wait));
-    lastCall = Date.now();
+    await throttle();
     const qs = new URLSearchParams({ ...params, key });
     const resp = await fetch(`${BASE}${path}?${qs}`);
     const data = await resp.json();
@@ -91,9 +90,7 @@ export async function walkingRoute(from: { lng: number; lat: number }, to: { lng
 async function amapGetV4(path: string, params: Record<string, string>, retries = 2): Promise<any> {
   const key = resolveAmapWebKey();
   for (let attempt = 0; attempt <= retries; attempt++) {
-    const wait = MIN_INTERVAL - (Date.now() - lastCall);
-    if (wait > 0) await new Promise(r => setTimeout(r, wait));
-    lastCall = Date.now();
+    await throttle();
     const qs = new URLSearchParams({ ...params, key });
     const resp = await fetch(`${BASE}${path}?${qs}`);
     const data = await resp.json();

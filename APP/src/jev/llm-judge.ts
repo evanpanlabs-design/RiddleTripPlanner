@@ -2,7 +2,8 @@
  * 输入的 questions 原样转发给生成模型（schema 与 Jev 一致：noul → {noul}，choice → {choice, confidence}），
  * 输出做保守清洗：noul 缺失/非法 → 0（不通过阈值，fail-closed）；choice 非法 → 置信 0（转人工，fail-closed）。
  * 配置走设置中心 resolveLlm（与生成模型同渠道）；支持 anthropic-messages 与 openai-completions 两种 API。 */
-import { resolveLlm } from "../settings.ts";
+import { resolveLlm, resolveLimits } from "../settings.ts";
+import { createMinInterval } from "../tools/limiter.ts";
 
 const SYSTEM = `你是旅行规划系统里的判断引擎（Jev 的退级替身）。给你 state 和一组 questions，逐题判断。
 输出【严格 JSON、不要任何多余文字】：{"answers": {"<question_id>": {...}, ...}}
@@ -28,12 +29,20 @@ function sanitize(questions: Record<string, any>, answers: Record<string, any>):
   return out;
 }
 
+/** RPM 限速（0.4.4 设置中心 limits.llmRpm，留空=不限）：判断器的密集小调用是触发网关 429 的主要来源，
+ * 主对话流是长流式天然低速，不挂这条队列 */
+const throttle = createMinInterval(() => {
+  const rpm = resolveLimits().llmRpm;
+  return rpm ? 60_000 / rpm : 0;
+});
+
 export class LlmJudge {
   constructor(private timeoutMs = 30000) {}
 
   async ask(state: unknown, questions: Record<string, any>): Promise<Record<string, any>> {
     const c = resolveLlm();
     if (!c.apiKey) throw new Error("LLM 未配置 API Key，无法退级判断");
+    await throttle();
     const user = `state:\n${JSON.stringify(state, null, 2)}\n\nquestions:\n${JSON.stringify(questions, null, 2)}`;
     let lastErr: Error | null = null;
     for (let attempt = 0; attempt < 4; attempt++) {

@@ -534,6 +534,10 @@
         <h3>系统</h3>
         <div class="mo-desc">一轮对话超过该时长强制中止（agent loop 无自带迭代上限的保险丝；正常一轮含地理解析约 60–90s）。</div>
         <div class="mo-row"><label>看门狗超时（秒，留空 = 240）</label><input id="setWatchdog" type="number" min="30" max="3600" step="10"></div>
+        <div class="mo-desc">速率限制：留空走默认（地图 QPS 2.5，与官方并发上限对齐）。LLM RPM 作用于后台判断器的密集调用（Friday 网关默认 5），主对话流不限制。</div>
+        <div class="mo-row"><label>LLM 判断 RPM（留空 = 不限）</label><input id="setLlmRpm" type="number" min="1" max="600" step="1"></div>
+        <div class="mo-row"><label>高德 QPS</label><input id="setAmapQps" type="number" min="0.5" max="50" step="0.5"></div>
+        <div class="mo-row"><label>百度 QPS</label><input id="setBaiduQps" type="number" min="0.5" max="50" step="0.5"></div>
       </div>
     </div>
     <div class="mo-foot"><span class="mo-msg" id="setMsg"></span><button class="btn ghost" id="setCancel">取消</button><button class="btn" id="setSave">保存</button></div>
@@ -1407,6 +1411,9 @@ function fillSettingsForm(){
   $('setBaiduJs').value = ''; $('setBaiduJs').placeholder = keyPh(SET.baidu.jsapi);
   ['testLlmMsg','testJevMsg','testAmapMsg','testBaiduMsg'].forEach(id=>{ $(id).textContent=''; $(id).className='mo-result'; });
   $('setWatchdog').value = SET.agent.watchdogSeconds ?? ''; $('setWatchdog').placeholder = String(SET.agent.effectiveWatchdogSeconds);
+  $('setLlmRpm').value = SET.limits?.llmRpm ?? ''; $('setLlmRpm').placeholder = '不限';
+  $('setAmapQps').value = SET.limits?.amapQps ?? ''; $('setAmapQps').placeholder = String(SET.limits?.effective?.amapQps ?? 2.5);
+  $('setBaiduQps').value = SET.limits?.baiduQps ?? ''; $('setBaiduQps').placeholder = String(SET.limits?.effective?.baiduQps ?? 2.5);
   fillLlmConf();
 }
 async function openSettings(){
@@ -1434,6 +1441,11 @@ $('setSave').onclick = async ()=>{
     amap: {}, baidu: {},
     map: { style: $('setMapStyle').value==='__custom' ? ($('setMapStyleId').value.trim() || 'light') : $('setMapStyle').value },
     agent: { watchdogSeconds: wd===''?null:+wd },
+    limits: {
+      llmRpm: $('setLlmRpm').value.trim()===''?null:+$('setLlmRpm').value,
+      amapQps: $('setAmapQps').value.trim()===''?null:+$('setAmapQps').value,
+      baiduQps: $('setBaiduQps').value.trim()===''?null:+$('setBaiduQps').value,
+    },
   };
   const putKey = (sec, k, v)=>{ v=v.trim(); if(v) body[sec][k]=v; };
   const lk = $('setLlmKey').value.trim(); if(lk) body.llm.conf[pid].apiKey = lk;

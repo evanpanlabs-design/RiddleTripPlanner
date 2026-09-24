@@ -26,6 +26,8 @@ export interface AppSettings {
   baidu: { webServiceKey: string; jsapiKey: string };   // 预留：下一版地图迁移用
   map: { active: MapProvider; style: string };            // 实际启用哪个地图数据源（互斥）；style = 内置预设名或高德自定义样式 ID
   agent: { watchdogSeconds: number | null };
+  /** 速率限制（0.4.4）：null = 默认/不限。llmRpm 作用于后台判断器（llm-judge）的密集调用；主对话流天然低速不限制 */
+  limits: { llmRpm: number | null; amapQps: number | null; baiduQps: number | null };
 }
 
 /** 高德 JSAPI 内置样式预设（无需自定义平台）；自定义样式 ID 走高德「自定义地图平台」发布后填入 */
@@ -63,6 +65,7 @@ const BLANK: AppSettings = {
   baidu: { webServiceKey: "", jsapiKey: "" },
   map: { active: "amap", style: "light" },
   agent: { watchdogSeconds: null },
+  limits: { llmRpm: null, amapQps: null, baiduQps: null },
 };
 
 let cache: AppSettings | null = null;
@@ -136,6 +139,16 @@ export function resolveWatchdogMs() {
   return (w && w > 0 ? w : 240) * 1000;
 }
 
+/** 速率限制解析（调用时读，热生效）：qps 默认 2.5（对应原写死 400ms 间隔）；llmRpm null = 不限 */
+export function resolveLimits() {
+  const l = loadSettings().limits ?? { llmRpm: null, amapQps: null, baiduQps: null };
+  return {
+    llmRpm: l.llmRpm && l.llmRpm > 0 ? l.llmRpm : null,
+    amapQps: l.amapQps && l.amapQps > 0 ? l.amapQps : 2.5,
+    baiduQps: l.baiduQps && l.baiduQps > 0 ? l.baiduQps : 2.5,
+  };
+}
+
 /** 当前启用的地图数据源（POI/路线解析走哪一家） */
 export function resolveMapProvider(): MapProvider {
   return loadSettings().map.active;
@@ -181,6 +194,7 @@ export function publicSettings(lab01Fallback: { key: string; securityJsCode: str
     },
     map: { active: s.map.active, style: s.map.style || "light", stylePresets: MAP_STYLE_PRESETS },
     agent: { watchdogSeconds: s.agent.watchdogSeconds, effectiveWatchdogSeconds: resolveWatchdogMs() / 1000 },
+    limits: { ...s.limits, effective: resolveLimits() },
     presets: Object.entries(LLM_PRESETS).map(([id, p]) => ({ id, label: p.label, baseUrl: p.baseUrl, model: p.model })),
   };
 }
