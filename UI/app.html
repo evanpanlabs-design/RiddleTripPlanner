@@ -773,8 +773,21 @@ function renderTimeline(){
     const cf = cfIds.has(e.event_id);
     return `<div class="tl-ev ${cls} ${nested?'tl-nested':''} ${cf?'conflict':''}" data-eid="${e.event_id}" ${nested?'':'draggable="true"'} ${cf?`title="${esc(cfMsg(e.event_id))}"`:''}><span class="t">${esc(timeLabel(e))}</span><span class="bar"></span><span class="body">${pin}${evText(e)}</span>${acts(e)}</div>`;
   };
+  /* 0.5.1：AOI 内部 route 归框——模型常把「景区内通勤段」（两端点都是某 AOI 的子事件）放顶层，
+     渲染时按端点归属虚拟归并进对应 AOI 框内（只动呈现，不动数据树/V8/冲突语义）；
+     进出景区的腿（一端在框外、或指向 AOI 自身）仍留顶层。 */
+  const innerRouteAoi = {}; // routeId -> aoiId
+  {
+    const kidsOf = {};
+    for (const a of v2Live().filter(x=>x.kind==='aoi')) kidsOf[a.event_id] = new Set(v2Kids(a.event_id).map(k=>k.event_id));
+    for (const r of v2Live().filter(x=>x.kind==='route' && !x.parent_id)) {
+      for (const [aid, set] of Object.entries(kidsOf)) {
+        if (set.has(r.detail?.from_ref) && set.has(r.detail?.to_ref)) { innerRouteAoi[r.event_id] = aid; break; }
+      }
+    }
+  }
   for(let d=1; d<=days; d++){
-    const tops = dayEvents(d);
+    const tops = dayEvents(d).filter(e=>!innerRouteAoi[e.event_id]);
     const sum = daySummary(d);
     html += `<div class="tl-day" data-day="${d}"><div class="tl-day-head"><span class="tl-day-num">D${d}</span><span class="tl-day-sum">${esc(sum)}</span></div>`;
     for(const e of tops){
@@ -782,6 +795,7 @@ function renderTimeline(){
       if(e.kind==='aoi'){
         // AOI 一律带框（无子事件 = 只有头部的框，如黄龙）；子事件在框内也是卡（框中框）
         const kids = v2Kids(e.event_id).filter(k=>k.day_refs?.includes(d))
+          .concat(v2Live().filter(r=>innerRouteAoi[r.event_id]===e.event_id && r.day_refs?.includes(d)))
           .sort((a,b)=>a.seq-b.seq || (a.time_window?.start??'99').localeCompare(b.time_window?.start??'99'));
         const t = timeLabel(e);
         const cf = cfIds.has(e.event_id);
