@@ -1002,7 +1002,7 @@ function arcPath(a, b, n = 48){
 const INTERCITY_MODE = /飞机|航班|flight|plane|火车|高铁|动车|城际|train|railway|大巴|客运|coach/i;
 
 /* ---- hover 悬浮信息卡：路线起止/方式/耗时/数据源，地点详情/关联行程 ---- */
-const EDGE_SRC = { amap_walk:'高德·步行路径', amap_bike:'高德·骑行路径', amap_drive:'高德·驾车路径', amap_transit:'高德·公交方案', baidu_transit:'百度·真实班次', geodesic:'测地线推测', empty:'待回填' };
+const EDGE_SRC = { amap_walk:'高德·步行路径', amap_bike:'高德·骑行路径', amap_drive:'高德·驾车路径', amap_transit:'高德·公交方案', baidu_transit:'百度·真实班次', geodesic:'测地线推测', estimated:'策略推测（无API路径）', empty:'待回填' };
 function srcLabel(src){ for(const k in EDGE_SRC) if((src||'').startsWith(k)) return EDGE_SRC[k]; return src||'未知'; }
 function fmtDur(s){ if(!s) return ''; const h=Math.floor(s/3600), m=Math.round(s%3600/60); return h?`${h}h${m?m+'m':''}`:`${m}m`; }
 function tipShow(html){ $('mapTip').innerHTML = html; $('mapTip').style.display = 'block'; }

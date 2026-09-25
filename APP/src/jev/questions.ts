@@ -75,6 +75,7 @@ export function d7VerifyQuestions(planDesc: string) {
     V5_anchor_constraint: "每日起点和终点有住宿或场站锚点（或已明确说明不需要）",
     V6_logistics_feasibility: "路段交通方式与耗时满足时间窗要求，不存在物理上来不及的衔接",
     V7_checklist_coverage: "方案中需要预订/预约/查询的事项都已被识别出来",
+    V9_geo_intent: "各点位的落位（城市/坐标）与旅行目的地在语义上一致，不存在同名异地错位的可疑点（例如目的地在四川，点位落位清单里却出现外省城市或明显偏离的坐标）",
   };
   return Object.fromEntries(
     Object.entries(checks).map(([k, v]) => [

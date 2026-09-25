@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { assembleDraft, checkChainCompleteness, checkPlanQuality, walkTree, type DraftV2, type EventV2, type RouteDetail, type PoiDetail, type OpeningDetail } from "../src/memory/event-v2.ts";
 import { migrateTripV1toV2 } from "../src/memory/migrate-v2.ts";
 import { editEvent, reorderEvents, insertPoiOnRoute, pinEvent, checkTimeConflicts, mergeTimeSovereignty, pushPlanBatch, clearPlanBatch } from "../src/memory/edits.ts";
+import { checkGeoSanity, cityMatch, specialRouteKind, estimateSpecialRoute, geoProblemSig, haversineM } from "../src/memory/geo-checks.ts";
 import { readEventDoc, writeEventDocLayer } from "../src/memory/event-docs.ts";
 import { TripStore, emptyTrip, type Trip } from "../src/memory/trip-store.ts";
 import { convexHull, douglasPeucker, wgs84ToGcj02 } from "../src/tools/osm-aoi.ts";
@@ -355,6 +356,72 @@ const mkRoute = (id: string, from: string, to: string, seq: number): EventV2 => 
   clearPlanBatch(T);
   const r8 = pushPlanBatch(T, 2, 2, { days: 3, events: [{ tmp_id: "z" }] });
   ok("final" in r8 && !r8.final && r8.missing.join() === "1", "batch：clearPlanBatch 后重新缺第 1 段", JSON.stringify(r8));
+}
+
+// ---------- 0.6：地理硬校验 H1–H3 + 非常规 route 策略推测 ----------
+console.log("== 0.6 地理校验与非常规 route ==");
+{
+  const LESHAN = { lng: 103.77, lat: 29.54 }, LIAONING = { lng: 119.41, lat: 41.24 };
+  const mkPoi = (id: string, name: string, geo: { lng: number; lat: number } | null, parent: string | null = null, city: string | null = null): any =>
+    ({ event_id: id, kind: "poi", name, parent_id: parent, seq: 0, day_refs: [1], status: "active", detail: { geo, city } });
+  const mkAoi = (id: string, name: string): any =>
+    ({ event_id: id, kind: "aoi", name, parent_id: null, seq: 0, day_refs: [1], status: "active", detail: {} });
+  const mkRoute = (id: string, name: string, mode: string, from: string, to: string, dist: number | null): any =>
+    ({ event_id: id, kind: "route", name, parent_id: null, seq: 0, day_refs: [1], status: "active", detail: { mode, from_ref: from, to_ref: to, distance_m: dist, geometry: [], data_source: "amap_walk" } });
+
+  // H1 父子地理包含：辽宁凌云寺 vs 乐山佛脚平台 → 双双报孤儿；近距离兄弟不报；单子事件不报
+  const aoiTree: Record<string, EventV2> = {
+    a1: mkAoi("a1", "乐山大佛"),
+    p1: mkPoi("p1", "乐山大佛佛脚平台", LESHAN, "a1"),
+    p2: mkPoi("p2", "凌云寺", LIAONING, "a1"),
+  } as any;
+  const h1 = checkGeoSanity(aoiTree);
+  ok(h1.hard.filter(p => p.code === "H1_CHILD_OUTLIER").length === 2, "H1：2600km 外子事件报孤儿（双向各一）", JSON.stringify(h1.hard));
+  ok(h1.hard[0]?.message.includes("同名异地") && h1.hard[0]?.message.includes("search_poi"), "H1：打回文案带原因与重查指引");
+  const nearTree: Record<string, EventV2> = { a1: mkAoi("a1", "乐山大佛"), p1: mkPoi("p1", "佛脚平台", LESHAN, "a1"), p2: mkPoi("p2", "凌云寺", { lng: 103.772, lat: 29.545 }, "a1") } as any;
+  ok(checkGeoSanity(nearTree).hard.filter(p => p.code === "H1_CHILD_OUTLIER").length === 0, "H1：近距离兄弟不误伤");
+  ok(checkGeoSanity({ a1: mkAoi("a1", "乐山大佛"), p1: mkPoi("p1", "凌云寺", LIAONING, "a1") } as any).hard.filter(p => p.code === "H1_CHILD_OUTLIER").length === 0, "H1：单子事件无法三角定位，放行交 H2");
+
+  // H2 行政区划白名单：辽宁朝阳不在白名单 → 拦；乐山市 → 过；city 缺失 → 过；白名单空 → 整体 fail-open
+  const wl = ["成都市", "阿坝藏族羌族自治州", "乐山市", "北京市"];
+  const h2bad = checkGeoSanity({ p1: mkPoi("p1", "凌云寺", LIAONING, null, "朝阳市") } as any, { whitelistCities: wl });
+  ok(h2bad.hard.some(p => p.code === "H2_CITY_WHITELIST" && p.message.includes("朝阳市") && p.message.includes("白名单")), "H2：白名单外城市拦截并列出白名单", JSON.stringify(h2bad.hard));
+  ok(checkGeoSanity({ p1: mkPoi("p1", "凌云寺", LESHAN, null, "乐山市") } as any, { whitelistCities: wl }).hard.length === 0, "H2：白名单内城市放行");
+  ok(checkGeoSanity({ p1: mkPoi("p1", "凌云寺", LESHAN, null, null) } as any, { whitelistCities: wl }).hard.length === 0, "H2：city 未解析=证据不足放行");
+  ok(checkGeoSanity({ p1: mkPoi("p1", "凌云寺", LIAONING, null, "朝阳市") } as any, { whitelistCities: [] }).hard.length === 0, "H2：白名单解析失败整体 fail-open");
+
+  // cityMatch 归一
+  ok(cityMatch("乐山市", "乐山") && cityMatch("阿坝藏族羌族自治州", "阿坝藏族羌族自治州") && cityMatch("北京市", "北京") && !cityMatch("朝阳市", "乐山市"), "cityMatch：行政后缀归一与包含匹配");
+
+  // H3 方式-距离常识：步行 1918km / 公交 2461km → 拦；步行 5km / 大巴 2000km → 过
+  const h3 = checkGeoSanity({ r1: mkRoute("r1", "x", "步行", "p1", "p2", 1_918_000), r2: mkRoute("r2", "y", "公交", "p1", "p2", 2_461_000), r3: mkRoute("r3", "z", "步行", "p1", "p2", 5_000), r4: mkRoute("r4", "w", "大巴", "p1", "p2", 2_000_000) } as any);
+  ok(h3.hard.filter(p => p.code === "H3_MODE_DISTANCE").length === 2, "H3：步行1918km+公交2461km 各拦一条，步行5km/跨城大巴不误伤", JSON.stringify(h3.hard.map(p => p.message)));
+  ok(h3.hard[0]?.message.includes("常识上限"), "H3：打回文案带常识上限");
+
+  // 防抱死签名：同一问题跨次重提（event_id 变了）签名稳定
+  const sigA = geoProblemSig({ code: "H1_CHILD_OUTLIER", message: "", ids: ["p2", "a1"] }, aoiTree);
+  const aoiTree2: Record<string, EventV2> = { b1: mkAoi("b1", "乐山大佛"), q1: mkPoi("q1", "乐山大佛佛脚平台", LESHAN, "b1"), q2: mkPoi("q2", "凌云寺", LIAONING, "b1") } as any;
+  const sigB = geoProblemSig({ code: "H1_CHILD_OUTLIER", message: "", ids: ["q2", "b1"] }, aoiTree2);
+  ok(sigA === sigB, "防抱死签名：event_id 重生成后按事件名签名稳定", `${sigA} vs ${sigB}`);
+
+  // 非常规 route：词表识别
+  ok(specialRouteKind("索道") === "cable" && specialRouteKind("缆车") === "cable" && specialRouteKind("摆渡船") === "ferry" && specialRouteKind("观光船") === "ferry" && specialRouteKind("景交车") === "shuttle" && specialRouteKind("观光车") === "shuttle" && specialRouteKind("步行") === null && specialRouteKind("大巴") === null, "非常规词表：索道/船/景交车识别，常规方式不误判");
+
+  // 索道：直线 2 点、距离=测地线×1.05、estimated
+  const mkDetail = (): RouteDetail => ({ mode: "索道", from_ref: "p1", to_ref: "p2", geometry: [], data_source: "empty" });
+  const a = { lng: 103.77, lat: 29.54 }, b = { lng: 103.78, lat: 29.55 };
+  const dc = mkDetail();
+  estimateSpecialRoute(dc, a, b, "cable");
+  const geoLen = haversineM(a, b);
+  ok(dc.data_source === "estimated" && dc.geometry.length === 2 && Math.abs(dc.distance_m! - geoLen * 1.05) < 2 && dc.duration_s! > 0 && !!dc.estimate_strategy, "索道：直线 2 点 + 测地线×1.05 + estimated", JSON.stringify(dc));
+  // 摆渡船：弧线 >2 点、×1.2
+  const df = mkDetail();
+  estimateSpecialRoute(df, a, b, "ferry");
+  ok(df.data_source === "estimated" && df.geometry.length > 2 && Math.abs(df.distance_m! - geoLen * 1.2) < 2 && df.geometry[0][0] === a.lng && df.geometry.at(-1)![0] === b.lng, "摆渡船：河道弧线（端点精确）+ ×1.2", JSON.stringify(df.distance_m));
+  // 景交车：弧线、×1.35
+  const ds = mkDetail();
+  estimateSpecialRoute(ds, a, b, "shuttle");
+  ok(ds.data_source === "estimated" && ds.geometry.length > 2 && Math.abs(ds.distance_m! - geoLen * 1.35) < 2, "景交车：园区路弧线 + ×1.35", JSON.stringify(ds.distance_m));
 }
 
 console.log(`\n结果：${pass} 通过，${fail} 失败`);

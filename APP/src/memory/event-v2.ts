@@ -73,6 +73,8 @@ export interface RouteDetail {
     line: string; depart?: string; arrive?: string; price?: number | null; disclaimer?: string;
   } | null;
   is_entry_exit?: boolean;      // true = AOI 的进出段
+  /** 0.6：非常规通勤（索道/摆渡船/景交车）策略推测的说明（data_source=estimated 时有值） */
+  estimate_strategy?: string;
   /** 0.5：端点顺序/交通方式被用户改过后置 true——里程/耗时/几何待下轮 LOOP 重算，D7 未清计入 fails */
   stale?: boolean;
 }

@@ -16,6 +16,7 @@ import { TH, d4ChecklistMatchQuestions } from "./jev/questions.ts";
 import { TripStore, tripSummary, planDesc, gateReport, destList, type Trip } from "./memory/trip-store.ts";
 import { assembleDraft, checkChainCompleteness, checkPlanQuality, isAoi, isPoi, isRoute, childrenOf, type DraftV2, type EventV2, type RouteEvent, type AoiEvent, type PoiEvent } from "./memory/event-v2.ts";
 import { mergeTimeSovereignty, checkTimeConflicts, pushPlanBatch, clearPlanBatch } from "./memory/edits.ts";
+import { DRIVE, WALK, BIKE, CITY, GEO, TRAIN, FLIGHT, COACH, checkGeoSanity, cityMatch, specialRouteKind, estimateSpecialRoute, geoProblemSig } from "./memory/geo-checks.ts";
 import { readEventDoc, writeEventDocLayer } from "./memory/event-docs.ts";
 import { enrichFromBaidu } from "./tools/baidu-place.ts";
 import { fetchAoiBoundary, convexHull } from "./tools/osm-aoi.ts";
@@ -259,7 +260,11 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
         return { content: [{ type: "text", text: `草案结构校验未通过：${applied.errors.map(e => e.message).join("；")}` }], details: {} };
       }
       store.save(); // 落图后立即落盘：校验或系统异常崩溃不丢方案（校验失败路径 undo 会再纠正）
-      const verify = await jev.d7Verify(planDesc(store.trip));
+      // 0.6 V9 意图-点位语义软校验：点位落位清单（名字+城市+坐标）随 planDesc 一起给 d7Verify，
+      // 同一批 Jev 调用多问一题，不增调用次数；V9 只 advisory 永不打回
+      const geoListing = Object.values(store.trip.events_v2 ?? {}).filter(isPoi)
+        .map(e => `${e.name}（${e.detail.city ?? "城市未知"}${e.detail.geo ? `，${e.detail.geo.lng.toFixed(2)},${e.detail.geo.lat.toFixed(2)}` : "，坐标未解析"}）`).join("；");
+      const verify = await jev.d7Verify(planDesc(store.trip) + `\n点位落位清单：${geoListing}`);
       const probs: Record<string, number> = {};
       for (const k of Object.keys(verify)) if (k.endsWith("_prob")) probs[k.replace(/_prob$/, "")] = verify[k];
       const fails = Object.keys(verify).filter(k => !k.endsWith("_prob") && verify[k] === "fail");
@@ -284,7 +289,33 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
       const staleRoutes = Object.values(treeNow).filter(e => isRoute(e) && e.detail.stale);
       probs.E2_route_stale = staleRoutes.length ? 0 : 1;
       if (staleRoutes.length) fails.push("E2_route_stale");
-      emit({ type: "jev", sub: "校验", fails, probs, advisories: quality.advisories.map(a => a.message), pass: !fails.length });
+      // 0.6 H1–H3 地理硬校验（机械零 LBS：坐标/距离/行政区的确定性矛盾）+ 防抱死降级
+      const wlCities: string[] = [];
+      const originSlot = store.trip.slots?.origin;
+      for (const name of [...destList(store.trip), ...(typeof originSlot === "string" && originSlot ? [originSlot] : [])]) {
+        const c = await resolveAdminCity(name);
+        if (c && !wlCities.some(w => cityMatch(w, c))) wlCities.push(c);
+      }
+      const geo = checkGeoSanity(treeNow, { whitelistCities: wlCities });
+      const geoHardKept: typeof geo.hard = [];
+      const geoDowngraded: string[] = [];
+      for (const p of geo.hard) {
+        const key = `${store.trip.trip_id}|${geoProblemSig(p, treeNow)}`;
+        const streak = (geoStreak.get(key) ?? 0) + 1;
+        geoStreak.set(key, streak);
+        if (streak >= GEO_STREAK_DOWNGRADE) geoDowngraded.push(p.message);
+        else geoHardKept.push(p);
+      }
+      const GEO_CODES = { H1_CHILD_OUTLIER: "H1_child_outlier", H2_CITY_WHITELIST: "H2_city_whitelist", H3_MODE_DISTANCE: "H3_mode_distance" } as const;
+      for (const [code, label] of Object.entries(GEO_CODES)) {
+        probs[label] = geo.hard.some(p => p.code === code) ? 0 : 1;
+        if (geoHardKept.some(p => p.code === code)) fails.push(label);
+      }
+      // V9 软校验：永不进 fails，只做 advisory 提示
+      const v9Idx = fails.indexOf("V9_geo_intent");
+      if (v9Idx >= 0) fails.splice(v9Idx, 1);
+      const v9Advisory = verify.V9_geo_intent === "fail" ? "V9 意图-点位语义存疑（LLM 软判）：部分点位的落位可能与旅行目的地不符，建议人工核对地图" : null;
+      emit({ type: "jev", sub: "校验", fails, probs, advisories: [...quality.advisories.map(a => a.message), ...geoDowngraded, ...(v9Advisory ? [v9Advisory] : [])], pass: !fails.length });
       store.trip.stage = gateReport(store.trip).stage;
       store.save();
       if (fails.length) {
@@ -295,14 +326,22 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
         // 0.5 e8：钉住冲突/stale 的修复指引随打回文本给出
         const e1Str = pinnedCf.length ? `。钉住冲突（这些事件被用户钉死，绝不能改它们的时间，只能绕开重排其它事件或请求用户拔钉）：${pinnedCf.map(c => c.message).join("；")}` : "";
         const e2Str = staleRoutes.length ? `。${staleRoutes.length} 条通勤段处于 stale（端点/方式被用户改过），本次草案必须重算这些段` : "";
-        return { content: [{ type: "text", text: `校验未通过（${fails.join(", ")}），请修复后重新提交完整草案。概率：${probStr}${v8Str}${q3Str}${e1Str}${e2Str}${retryHint}` }], details: { verify, v8, quality, pinned_conflicts: pinnedCf, stale_routes: staleRoutes.map(r => r.event_id) } };
+        // 0.6：地理硬校验打回文案自带修复指引（错误坐标/白名单/重查词），降级问题不打回只提示
+        const hStr = geoHardKept.length ? `。地理校验未通过：${geoHardKept.map(p => p.message).join("；")}` : "";
+        const dgStr = geoDowngraded.length ? `。以下地理问题已连续多次未修复，本次降级为提醒（不阻塞）：${geoDowngraded.join("；")}` : "";
+        return { content: [{ type: "text", text: `校验未通过（${fails.join(", ")}），请修复后重新提交完整草案。概率：${probStr}${v8Str}${q3Str}${e1Str}${e2Str}${hStr}${dgStr}${retryHint}` }], details: { verify, v8, quality, geo_problems: geo.hard, geo_downgraded: geoDowngraded, pinned_conflicts: pinnedCf, stale_routes: staleRoutes.map(r => r.event_id) } };
       }
-      // 落图校验通过：整树 draft → active（SPEC §3.1 status 语义）；分批缓冲功成身退
+      // 落图校验通过：整树 draft → active（SPEC §3.1 status 语义）；分批缓冲功成身退；防抱死计数清零
       for (const ev of Object.values(store.trip.events_v2 ?? {})) if (ev.status === "draft") ev.status = "active";
       if (batched) clearPlanBatch(store.trip.trip_id);
+      for (const k of [...geoStreak.keys()]) if (k.startsWith(`${store.trip.trip_id}|`)) geoStreak.delete(k);
       store.save();
       const { warnings, gaps, aoiAsync } = applied;
       const warnNote = warnings.length ? `。提示：${warnings.join("；")}` : "";
+      const estCount = Object.values(store.trip.events_v2 ?? {}).filter(e => isRoute(e) && e.detail.data_source === "estimated").length;
+      const estNote = estCount ? `。${estCount} 条非常规通勤段（索道/摆渡船/景交车等）无 API 真实路径，已按路由策略推测（地图虚线，距离/耗时为估计值，回复用户时可说明）` : "";
+      const dgNote = geoDowngraded.length ? `。以下地理问题已连续多次未修复、已降级为提醒：${geoDowngraded.join("；")}——请在回复中向用户说明并请其人工核对` : "";
+      const v9Note = v9Advisory ? `。${v9Advisory}` : "";
       const gapNote = gaps.length
         ? `。注意：${gaps.length} 条通勤段未获得真实路径——${gaps.map(g => `${g.from}→${g.to}（${g.mode}：${g.reason}）`).join("，")}。可用 search_poi 核实点位名后重新 apply_plan 修复，或在回复中向用户说明`
         : "";
@@ -310,7 +349,7 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
       const qualityNote = quality.advisories.length ? `。质量提示（建议级，未阻塞）：${quality.advisories.map(q => q.message).join("；")}——可在后续与用户共创时优化` : "";
       // 0.5：用户软值被重排必须明说（三层时间模型）
       const softNote = applied.softOverrides.length ? `。重要：以下用户手动调整过的时间被本次重排改动，你必须在回复中逐条向用户说明理由——${applied.softOverrides.join("；")}` : "";
-      return { content: [{ type: "text", text: `方案已落图并通过校验：${Object.keys(store.trip.events_v2 ?? {}).length} 个事件（含嵌套），${Object.keys(store.trip.checklist).length} 项清单。当前阶段 ${store.trip.stage}${aoiNote}${gapNote}${warnNote}${qualityNote}${softNote}` }], details: { verify, route_gaps: gaps, warnings, quality, soft_overrides: applied.softOverrides } };
+      return { content: [{ type: "text", text: `方案已落图并通过校验：${Object.keys(store.trip.events_v2 ?? {}).length} 个事件（含嵌套），${Object.keys(store.trip.checklist).length} 项清单。当前阶段 ${store.trip.stage}${aoiNote}${gapNote}${warnNote}${estNote}${qualityNote}${softNote}${dgNote}${v9Note}` }], details: { verify, route_gaps: gaps, warnings, quality, geo_downgraded: geoDowngraded, v9_advisory: v9Advisory, soft_overrides: applied.softOverrides } };
     },
   };
 
@@ -633,6 +672,20 @@ export function createRiddleAgent(existingStore?: TripStore): RiddleRuntime {
  *      → 地理解析（高德坐标）→ 百度 place detail 富化（opening/price/rating/scope_grade）
  *      → route 数据补全（高德市内 / 百度跨城班次）→ AOI 包络上线 + OSM 边界后台获取。
  * dryRun=true 时只做结构校验（apply_plan execute 的前置打回检查），不落地、不发起任何 IO。 */
+/* 0.6：行政区划白名单的城市解析缓存（目的地/出发地名 → 高德行政市）。
+ * 每行程目的地 ≤5 个、进程内只查一次——H2 白名单的 LBS 成本趋近于零。 */
+const adminCityCache = new Map<string, string | null>();
+async function resolveAdminCity(name: string): Promise<string | null> {
+  if (adminCityCache.has(name)) return adminCityCache.get(name)!;
+  let city: string | null = null;
+  try { city = (await searchPoi(name))?.city ?? null; } catch { /* 解析失败 = 证据不足，H2 fail-open */ }
+  adminCityCache.set(name, city);
+  return city;
+}
+/* 0.6 防抱死：同一地理硬问题（tripId|code|事件名签名）连续打回计数，第 3 次起降级 advisory 转人工。
+ * 只统计、不阻塞其他校验；apply 全绿后清空该 trip 的计数。 */
+const geoStreak = new Map<string, number>();
+const GEO_STREAK_DOWNGRADE = 3;
 type ApplyV2Result =
   | { ok: true; warnings: string[]; gaps: { from: string; to: string; mode: string; reason: string }[]; aoiAsync: number; softOverrides: string[] }
   | { ok: false; errors: { code: string; message: string }[] };
@@ -769,8 +822,8 @@ async function applyDraftV2(store: TripStore, draft: DraftV2, emit?: (ev: Riddle
 
 /** 单条 route 事件的数据源解析（原地修改）。策略与 v1 resolveEdgeData 一致：
  * 市内通勤必须有真实路径与耗时（高德）；跨城走百度真实班次并回填 detail.schedule；
- * 未识别 mode 按直线距离推断；解析失败降级测地线距离。 */
-async function resolveRouteDataV2(ev: RouteEvent, events: Record<string, EventV2>) {
+ * 非常规通勤走策略推测；未识别 mode 按直线距离推断；解析失败降级测地线距离。 */
+export async function resolveRouteDataV2(ev: RouteEvent, events: Record<string, EventV2>) {
   const geoOf = (id: string): { lat: number; lng: number } | null => {
     const e = events[id];
     if (!e) return null;
@@ -781,6 +834,9 @@ async function resolveRouteDataV2(ev: RouteEvent, events: Record<string, EventV2
   const a = geoOf(ev.detail.from_ref), b = geoOf(ev.detail.to_ref);
   if (!a || !b) return;
   const d = ev.detail;
+  // 0.6：非常规通勤（索道/摆渡船/景交车）无 API 真实路径，直接路由策略推测（零调用）
+  const sp = specialRouteKind(d.mode);
+  if (sp) { estimateSpecialRoute(d, a, b, sp); return; }
   const prefer = transitPrefer(d.mode);
   if (prefer) {
     try {
@@ -832,16 +888,9 @@ async function resolveRouteDataV2(ev: RouteEvent, events: Record<string, EventV2
 /* ================= 边数据补全（applyDraft 与迁移脚本共用） =================
  * 策略：市内通勤（步行/骑行/驾车/公交地铁）必须有真实路径与耗时（高德）；
  * 跨城火车/飞机/大巴走百度真实班次，失败留空待回填（跨城大交通可推测，不强制真实）；
+ * 非常规通勤（索道/摆渡船/景交车）无 API 路径，走 geo-checks 路由策略推测（零调用，estimated）；
  * 未识别的 mode 按直线距离推断（≤1.5km 步行，否则驾车）；市内解析失败降级测地线距离。
- * （mode 是 LLM 写的自由文本，中英都收：walk/步行…） */
-const DRIVE = new Set(["drive", "驾车", "自驾", "开车", "车程", "包车", "打车", "出租车", "网约车"]);
-const WALK = new Set(["walk", "walking", "步行", "走路", "徒步", "散步", "citywalk"]);
-const BIKE = new Set(["bike", "bicycle", "cycling", "骑行", "骑车", "自行车", "单车", "共享单车"]);
-const CITY = new Set(["metro", "subway", "公交", "地铁", "巴士", "公车", "电车", "公共交通", "bus"]);
-const GEO = new Set(["geodesic", "直线", "测地线"]);
-const TRAIN = new Set(["train", "rail", "railway", "火车", "高铁", "动车", "城际"]);
-const FLIGHT = new Set(["flight", "plane", "飞机", "航班"]);
-const COACH = new Set(["coach", "大巴", "客运", "班车"]);
+ * （mode 是 LLM 写的自由文本，中英都收：walk/步行…；词表统一在 memory/geo-checks.ts） */
 const transitPrefer = (mode: string): IntercityPrefer | null =>
   TRAIN.has(mode) ? "train" : FLIGHT.has(mode) ? "flight" : COACH.has(mode) ? "coach" : null;
 
