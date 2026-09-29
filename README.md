@@ -101,9 +101,22 @@ APP/            TypeScript application (agent loop, Jev client, tools, server)
   scripts/            regression suites (v2 logic, Jev, Baidu transit)
 UI/app.html     the notebook UI (single file, no build step)
 SPEC/           architecture & judgment-system design docs (Chinese)
-docs/demo/      feature screenshots
+docs/demo/      feature screenshots & architecture diagram
+docs/diagrams/  diagram sources (drawio, editable)
 ARCHIVE/        exploration lineage & reference material (RAWIDEAS → ANALYSIS → PRD → LAB → KB)
 ```
+
+## The Agent Loop at a glance
+
+![Agent Loop overview](docs/demo/agent-loop-overview.png)
+
+Solid lines: data & control flow. Dashed lines: judgment & feedback. The three Jev nodes are three task contracts of one judgment engine:
+
+- **Intent Parser** — every utterance is classified with calibrated probabilities before the LLM call, injected alongside the state summary so generation is conditioned on judgment;
+- **Pre-Check** — every tool call is verified against the user's own words before execution; low-confidence changes are never executed silently — they become an explicit question back to the user;
+- **QC** — tool execution assembles the event graph server-side (geocoding, real transit schedules), producing POI / ROUTE / AOI events (see legend); Jev reviews structure & geography, rejecting with repair hints for the model to fix within the same turn.
+
+Event Graph is the single source of truth; its summary is re-injected every turn (State Info). Users enter through two doors: **Query** (conversation) and **Operate** (direct map/timeline edits — also written to state, so the agent always knows what the user did by hand).
 
 ## How a turn works
 

@@ -96,9 +96,22 @@ APP/            TypeScript 应用（agent 主循环、Jev 客户端、工具、�
   scripts/            回归测试（v2 逻辑、Jev、百度班次）
 UI/app.html     笔记本 UI（单文件，无构建）
 SPEC/           架构与判断系统设计文档（中文）
-docs/demo/      功能截图
+docs/demo/      功能截图与架构图
+docs/diagrams/  架构图源文件（drawio，可编辑）
 ARCHIVE/        探索脉络与参考资料（RAWIDEAS → ANALYSIS → PRD → LAB → KB）
 ```
+
+## Agent Loop 架构总览
+
+![Agent Loop 架构总览](docs/demo/agent-loop-overview.png)
+
+实线是数据与控制流主循环，虚线是判断与反馈链路；三个 Jev 节点是同一个判断引擎的三组任务契约：
+
+- **Intent Parser（意图识别）**——用户输入先判定意图并给出概率，随状态摘要一起注入上下文，让生成被判断校准；
+- **Pre-Check（执行前校验）**——LLM 的每次工具调用先经预检（这个修改用户原话支持吗），通过才实际执行；低置信的修改不执行，转为向用户确认；
+- **QC（方案校验）**——工具执行中由服务端完成组装与富化（坐标解析、真实班次回填），产出 POI / ROUTE / AOI 事件图（见右侧图例）；Jev 复核结构与地理合理性，驳回时附修复指引，LLM 当轮修正重提。
+
+Event Graph 是唯一事实源，其状态摘要逐轮重新注入（State Info），驱动循环持续运转。用户有两条入口：Query 走对话，Operate 是地图/时间线上的直接操作——手动操作同样写入状态并注入，Agent 始终知道"这件事用户自己做了"。
 
 ## 一轮对话如何运转
 

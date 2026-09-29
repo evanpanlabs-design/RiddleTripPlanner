@@ -1,0 +1,220 @@
+<mxfile host="Electron">
+  <diagram name="第 1 页" id="-wSNl8YLBuAhJZiafSuU">
+    <mxGraphModel dx="2788" dy="2020" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="NctiuWifiSyX0AAHcIPN-5" edge="1" parent="1" source="NctiuWifiSyX0AAHcIPN-1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="NctiuWifiSyX0AAHcIPN-8">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="360" y="60" />
+              <mxPoint x="360" y="180" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fontSize=14;fontStyle=1;fillColor=#f5f5f5;fontColor=#333333;strokeColor=#666666;" value="System Prompt" vertex="1">
+          <mxGeometry height="40" width="120" x="40" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-6" edge="1" parent="1" source="NctiuWifiSyX0AAHcIPN-2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="NctiuWifiSyX0AAHcIPN-4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fontSize=14;fontStyle=1;fillColor=#d5e8d4;strokeColor=#82b366;" value="Query" vertex="1">
+          <mxGeometry height="40" width="120" x="40" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-7" edge="1" parent="1" source="NctiuWifiSyX0AAHcIPN-3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="NctiuWifiSyX0AAHcIPN-4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fontSize=14;fontStyle=1;fillColor=#f5f5f5;fontColor=#333333;strokeColor=#666666;" value="State Info" vertex="1">
+          <mxGeometry height="40" width="120" x="40" y="280" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-9" edge="1" parent="1" source="NctiuWifiSyX0AAHcIPN-4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="NctiuWifiSyX0AAHcIPN-8">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-4" parent="1" style="ellipse;whiteSpace=wrap;html=1;shapeInside=1;aspect=fixed;verticalAlign=middle;align=center;fontStyle=2;fontSize=12;fillColor=#ffe6cc;strokeColor=#d79b00;" value="JEV&lt;br&gt;as&lt;br&gt;Intent&lt;br&gt;Parser" vertex="1">
+          <mxGeometry height="80" width="80" x="240" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-19" edge="1" parent="1" source="NctiuWifiSyX0AAHcIPN-8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;startArrow=classic;startFill=1;" target="NctiuWifiSyX0AAHcIPN-18">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-20" connectable="0" parent="NctiuWifiSyX0AAHcIPN-19" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="&lt;span style=&quot;font-size: 12px;&quot;&gt;Tool Call&lt;/span&gt;" vertex="1">
+          <mxGeometry relative="1" x="0.0694" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-22" edge="1" parent="1" source="NctiuWifiSyX0AAHcIPN-8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;startArrow=none;startFill=0;" target="NctiuWifiSyX0AAHcIPN-21">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-8" parent="1" style="ellipse;whiteSpace=wrap;html=1;shapeInside=1;aspect=fixed;verticalAlign=middle;align=center;fontStyle=3;fontSize=14;fillColor=#dae8fc;strokeColor=#6c8ebf;" value="LLM" vertex="1">
+          <mxGeometry height="80" width="80" x="440" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-11" edge="1" parent="1" source="NctiuWifiSyX0AAHcIPN-10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;startArrow=classic;startFill=1;" target="NctiuWifiSyX0AAHcIPN-8">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-12" connectable="0" parent="NctiuWifiSyX0AAHcIPN-11" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=12;" value="Tool Call" vertex="1">
+          <mxGeometry relative="1" x="-0.0889" y="-2" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-10" parent="1" style="shape=document;whiteSpace=wrap;html=1;boundedLbl=1;fontStyle=1;fontSize=14;fillColor=#e1d5e7;strokeColor=#9673a6;" value="Geo APIs" vertex="1">
+          <mxGeometry height="50" width="120" x="420" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-13" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fontSize=14;fontStyle=1;fillColor=#e1d5e7;strokeColor=#9673a6;" value="Geo Info Cache DB" vertex="1">
+          <mxGeometry height="80" width="120" x="420" y="320" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-14" edge="1" parent="1" source="NctiuWifiSyX0AAHcIPN-8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;entryPerimeter=0;startArrow=classic;startFill=1;" target="NctiuWifiSyX0AAHcIPN-13">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-15" connectable="0" parent="NctiuWifiSyX0AAHcIPN-14" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="&lt;span style=&quot;font-size: 12px;&quot;&gt;Tool Call&lt;/span&gt;" vertex="1">
+          <mxGeometry relative="1" y="-2" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-17" edge="1" parent="1" source="NctiuWifiSyX0AAHcIPN-16" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="NctiuWifiSyX0AAHcIPN-8">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="380" y="360" />
+              <mxPoint x="380" y="180" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-16" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fontSize=14;fontStyle=1;fillColor=#e1d5e7;strokeColor=#9673a6;" value="Memo" vertex="1">
+          <mxGeometry height="80" width="120" x="240" y="320" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-18" parent="1" style="shape=document;whiteSpace=wrap;html=1;boundedLbl=1;fontStyle=1;fontSize=14;fillColor=#f8cecc;strokeColor=#b85450;" value="Event Graph" vertex="1">
+          <mxGeometry height="50" width="120" x="600" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-23" edge="1" parent="1" source="NctiuWifiSyX0AAHcIPN-21" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;endArrow=none;endFill=0;dashed=1;strokeWidth=2;" target="NctiuWifiSyX0AAHcIPN-18">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-25" edge="1" parent="1" source="NctiuWifiSyX0AAHcIPN-21" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="NctiuWifiSyX0AAHcIPN-24">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-62" edge="1" parent="1" source="NctiuWifiSyX0AAHcIPN-21" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=1;entryDx=0;entryDy=0;" target="NctiuWifiSyX0AAHcIPN-8">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-21" parent="1" style="ellipse;whiteSpace=wrap;html=1;shapeInside=1;aspect=fixed;verticalAlign=middle;align=center;fontStyle=2;fontSize=12;fillColor=#ffe6cc;strokeColor=#d79b00;" value="JEV&lt;br&gt;as&lt;br&gt;QC" vertex="1">
+          <mxGeometry height="80" width="80" x="620" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-24" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fontSize=14;fontStyle=1;fillColor=#d5e8d4;strokeColor=#82b366;" value="Output" vertex="1">
+          <mxGeometry height="40" width="120" x="800" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-27" edge="1" parent="1" source="NctiuWifiSyX0AAHcIPN-26" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="NctiuWifiSyX0AAHcIPN-3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-26" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fontSize=14;fontStyle=1;fillColor=#d5e8d4;strokeColor=#82b366;" value="Operate" vertex="1">
+          <mxGeometry height="40" width="120" x="40" y="360" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-29" edge="1" parent="1" source="NctiuWifiSyX0AAHcIPN-28" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="NctiuWifiSyX0AAHcIPN-2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-30" edge="1" parent="1" source="NctiuWifiSyX0AAHcIPN-28" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="NctiuWifiSyX0AAHcIPN-26">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-28" parent="1" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;" value="User" vertex="1">
+          <mxGeometry height="120" width="60" x="-120" y="180" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-48" edge="1" parent="1" source="NctiuWifiSyX0AAHcIPN-18" style="endArrow=none;dashed=1;html=1;rounded=0;exitX=1;exitY=0.75;exitDx=0;exitDy=0;entryX=0;entryY=1;entryDx=0;entryDy=0;" target="NctiuWifiSyX0AAHcIPN-33" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="590" y="-25" as="sourcePoint" />
+            <mxPoint x="640" y="-75" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-49" edge="1" parent="1" style="endArrow=none;dashed=1;html=1;rounded=0;entryX=1;entryY=0;entryDx=0;entryDy=0;entryPerimeter=0;" target="NctiuWifiSyX0AAHcIPN-18" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="780" y="-40" as="sourcePoint" />
+            <mxPoint x="740" y="-30" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-53" edge="1" parent="1" source="NctiuWifiSyX0AAHcIPN-50" style="endArrow=none;dashed=1;html=1;rounded=0;exitX=0;exitY=0;exitDx=0;exitDy=0;" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="710" y="330" as="sourcePoint" />
+            <mxPoint x="500" y="280" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-59" connectable="0" parent="1" style="group" value="" vertex="1">
+          <mxGeometry height="100" width="320" x="610" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-50" parent="NctiuWifiSyX0AAHcIPN-59" style="rounded=1;whiteSpace=wrap;html=1;strokeWidth=2;" value="" vertex="1">
+          <mxGeometry height="100" width="270" x="30" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-55" edge="1" parent="NctiuWifiSyX0AAHcIPN-59" source="NctiuWifiSyX0AAHcIPN-51" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="NctiuWifiSyX0AAHcIPN-54">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-56" edge="1" parent="NctiuWifiSyX0AAHcIPN-59" source="NctiuWifiSyX0AAHcIPN-51" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;endArrow=oval;endFill=0;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint y="50" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-51" parent="NctiuWifiSyX0AAHcIPN-59" style="ellipse;whiteSpace=wrap;html=1;shapeInside=1;aspect=fixed;verticalAlign=middle;align=center;fontStyle=2;fontSize=12;fillColor=#ffe6cc;strokeColor=#d79b00;" value="JEV&lt;br&gt;Pre-Check" vertex="1">
+          <mxGeometry height="80" width="80" x="50" y="10" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-54" parent="NctiuWifiSyX0AAHcIPN-59" style="rounded=1;whiteSpace=wrap;html=1;fontSize=14;fontStyle=1;fillColor=#fff2cc;strokeColor=#d6b656;" value="Actual ToolCall" vertex="1">
+          <mxGeometry height="40" width="120" x="157" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-57" edge="1" parent="NctiuWifiSyX0AAHcIPN-59" source="NctiuWifiSyX0AAHcIPN-54" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;endArrow=oval;endFill=0;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="370" y="49.70999999999998" as="sourcePoint" />
+            <mxPoint x="320" y="49.70999999999998" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-60" edge="1" parent="1" source="NctiuWifiSyX0AAHcIPN-50" style="endArrow=none;dashed=1;html=1;rounded=0;exitX=0;exitY=1;exitDx=0;exitDy=0;" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="720" y="310" as="sourcePoint" />
+            <mxPoint x="500" y="280" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-61" connectable="0" parent="1" style="group;aspect=fixed;" value="" vertex="1">
+          <mxGeometry height="170" width="580" x="780" y="-30" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-31" parent="NctiuWifiSyX0AAHcIPN-61" style="ellipse;whiteSpace=wrap;html=1;shapeInside=1;aspect=fixed;strokeColor=none;fillColor=#808080;" value="" vertex="1">
+          <mxGeometry height="40" width="40" x="30" y="50" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-33" parent="NctiuWifiSyX0AAHcIPN-61" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=14;fontStyle=1" value="POI Event" vertex="1">
+          <mxGeometry height="30" width="100" y="110" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-38" parent="NctiuWifiSyX0AAHcIPN-61" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=14;fontStyle=1" value="ROUTE Event" vertex="1">
+          <mxGeometry height="30" width="100" x="160" y="110" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-39" connectable="0" parent="NctiuWifiSyX0AAHcIPN-61" style="group" value="" vertex="1">
+          <mxGeometry height="60" width="180" x="120" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-36" parent="NctiuWifiSyX0AAHcIPN-39" style="rounded=1;whiteSpace=wrap;html=1;fillColor=default;strokeWidth=2;" value="" vertex="1">
+          <mxGeometry height="60" width="180" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-37" edge="1" parent="NctiuWifiSyX0AAHcIPN-39" source="NctiuWifiSyX0AAHcIPN-34" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;endArrow=none;endFill=0;strokeWidth=2;" target="NctiuWifiSyX0AAHcIPN-35">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-34" parent="NctiuWifiSyX0AAHcIPN-39" style="ellipse;whiteSpace=wrap;html=1;shapeInside=1;aspect=fixed;strokeColor=none;fillColor=#808080;" value="" vertex="1">
+          <mxGeometry height="40" width="40" x="10" y="10" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-35" parent="NctiuWifiSyX0AAHcIPN-39" style="ellipse;whiteSpace=wrap;html=1;shapeInside=1;aspect=fixed;strokeColor=none;fillColor=#808080;" value="" vertex="1">
+          <mxGeometry height="40" width="40" x="130" y="10" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-40" parent="NctiuWifiSyX0AAHcIPN-61" style="shape=hexagon;perimeter=hexagonPerimeter2;whiteSpace=wrap;html=1;shapeInside=1;fixedSize=1;strokeWidth=2;" value="" vertex="1">
+          <mxGeometry height="130" width="150" x="330" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-44" edge="1" parent="NctiuWifiSyX0AAHcIPN-61" source="NctiuWifiSyX0AAHcIPN-41" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;endArrow=none;endFill=0;strokeWidth=2;" target="NctiuWifiSyX0AAHcIPN-42">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-41" parent="NctiuWifiSyX0AAHcIPN-61" style="ellipse;whiteSpace=wrap;html=1;shapeInside=1;aspect=fixed;strokeColor=none;fillColor=#808080;" value="" vertex="1">
+          <mxGeometry height="40" width="40" x="350" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-45" edge="1" parent="NctiuWifiSyX0AAHcIPN-61" source="NctiuWifiSyX0AAHcIPN-42" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;endArrow=none;endFill=0;strokeWidth=2;" target="NctiuWifiSyX0AAHcIPN-43">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-42" parent="NctiuWifiSyX0AAHcIPN-61" style="ellipse;whiteSpace=wrap;html=1;shapeInside=1;aspect=fixed;strokeColor=none;fillColor=#808080;" value="" vertex="1">
+          <mxGeometry height="40" width="40" x="420" y="45" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-43" parent="NctiuWifiSyX0AAHcIPN-61" style="ellipse;whiteSpace=wrap;html=1;shapeInside=1;aspect=fixed;strokeColor=none;fillColor=#808080;" value="" vertex="1">
+          <mxGeometry height="40" width="40" x="360" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-46" parent="NctiuWifiSyX0AAHcIPN-61" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=14;fontStyle=1" value="AOI Event" vertex="1">
+          <mxGeometry height="30" width="100" x="360" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="NctiuWifiSyX0AAHcIPN-64" edge="1" parent="1" source="NctiuWifiSyX0AAHcIPN-51" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=1;entryY=1;entryDx=0;entryDy=0;" target="NctiuWifiSyX0AAHcIPN-8">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
